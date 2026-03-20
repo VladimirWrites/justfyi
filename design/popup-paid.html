@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @font-face {
+    font-family: 'Inter';
+    src: url('../landing/fonts/InterVariable.woff2') format('woff2');
+    font-weight: 100 900;
+    font-display: block;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 800px; height: 758px; background: #F9F9F9; }
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    display: flex; align-items: stretch; justify-content: stretch;
+    padding: 32px;
+  }
+  .popup {
+    flex: 1; display: flex; flex-direction: column;
+    background: #F9F9F9;
+    border-radius: 24px;
+    overflow: hidden;
+  }
+  .browser-bar {
+    display: flex; align-items: center; gap: 16px;
+    padding: 20px 28px;
+    background: #EDE7F6;
+    border-bottom: 1px solid #CAC4D0;
+  }
+  .browser-dots { display: flex; gap: 10px; }
+  .browser-dots span { width: 16px; height: 16px; border-radius: 50%; }
+  .browser-dots span:nth-child(1) { background: #EC6A5E; }
+  .browser-dots span:nth-child(2) { background: #F4BF4F; }
+  .browser-dots span:nth-child(3) { background: #61C554; }
+  .browser-url {
+    flex: 1; background: #fff; border-radius: 12px;
+    padding: 10px 20px; font-size: 22px; color: #49454F;
+    display: flex; align-items: center; justify-content: space-between;
+    font-weight: 500;
+  }
+  .url-badge {
+    width: 28px; height: 28px; border-radius: 7px;
+    background: #9F403D; color: #fff;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 18px; font-weight: 800;
+  }
+  .popup-body {
+    padding: 32px;
+    display: flex; flex-direction: column; gap: 24px;
+    flex: 1;
+  }
+  .popup-header h3 {
+    font-size: 30px; font-weight: 700; color: #2D3435;
+    letter-spacing: -0.02em;
+  }
+  .popup-header .domain {
+    font-size: 20px; color: #5A6061; margin-top: 6px;
+  }
+  .rating-card {
+    display: flex; align-items: center; gap: 24px;
+    padding: 24px 28px;
+    background: #F2F4F4;
+    border-radius: 16px;
+  }
+  .rating-icon-wrap {
+    width: 72px; height: 72px; border-radius: 22%;
+    background: #9F403D;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    color: #fff; font-size: 40px; font-weight: 800;
+  }
+  .rating-info { display: flex; flex-direction: column; gap: 4px; }
+  .rating-label { font-size: 26px; font-weight: 600; color: #2D3435; }
+  .rating-flag { font-size: 18px; color: #5A6061; }
+  .alts-label {
+    font-size: 18px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.05em; color: #5A6061;
+  }
+  .alts-list { display: flex; flex-direction: column; gap: 10px; }
+  .alt-row {
+    display: flex; align-items: center; gap: 14px;
+    padding: 14px 20px;
+    background: #fff; border: 1px solid rgba(173,179,180,0.2);
+    border-radius: 12px;
+  }
+  .alt-dot {
+    width: 40px; height: 40px; border-radius: 22%;
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; font-size: 22px; font-weight: 800;
+    flex-shrink: 0;
+  }
+  .alt-dot.free { background: #006C49; }
+  .alt-dot.limits { background: #F59E0B; }
+  .alt-name {
+    font-size: 22px; font-weight: 500; color: #2D3435;
+    flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .alt-status {
+    font-size: 18px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+  .alt-status.free { color: #006C49; }
+  .alt-status.limits { color: #F59E0B; }
+</style>
+</head>
+<body>
+  <div class="popup">
+    <div class="browser-bar">
+      <div class="browser-dots"><span></span><span></span><span></span></div>
+      <div class="browser-url">
+        <span>totallyfreepdf.com/merge</span>
+        <span class="url-badge">$</span>
+      </div>
+    </div>
+    <div class="popup-body">
+      <div class="popup-header">
+        <h3>JustFYI</h3>
+        <div class="domain">totallyfreepdf.com</div>
+      </div>
+      <div class="rating-card">
+        <div class="rating-icon-wrap">$</div>
+        <div class="rating-info">
+          <span class="rating-label">Paid</span>
+          <span class="rating-flag">Will charge you to download</span>
+        </div>
+      </div>
+      <div class="alts-label">Free alternatives</div>
+      <div class="alts-list">
+        <div class="alt-row">
+          <div class="alt-dot free">✓</div>
+          <div class="alt-name">OS / stirling-pdf.com</div>
+          <div class="alt-status free">Free</div>
+        </div>
+        <div class="alt-row">
+          <div class="alt-dot free">✓</div>
+          <div class="alt-name">pdf24.org</div>
+          <div class="alt-status free">Free</div>
+        </div>
+        <div class="alt-row">
+          <div class="alt-dot limits">!</div>
+          <div class="alt-name">OS / ilovepdf.com</div>
+          <div class="alt-status limits">Limits</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

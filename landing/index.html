@@ -1,0 +1,775 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>JustFYI — that "free" tool isn't free.</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg"/>
+  <link rel="icon" type="image/png" href="favicon.png"/>
+  <link rel="icon" type="image/x-icon" href="favicon.ico"/>
+  <meta name="description" content="Browser extension that tells you — before you upload your file — whether a tool is actually free, freemium, paid, or abandoned.">
+  <meta name="color-scheme" content="light dark">
+  <script>
+    // Set theme early to avoid flash of wrong palette.
+    (function() {
+      try {
+        var saved = localStorage.getItem('theme');
+        if (saved === 'light' || saved === 'dark') {
+          document.documentElement.setAttribute('data-theme', saved);
+        }
+      } catch (e) {}
+    })();
+  </script>
+  <meta property="og:title" content='JustFYI — that "free" tool isn''t free.'>
+  <meta property="og:description" content="Know whether an online tool is actually free, freemium, paid, or abandoned — before you waste time on it.">
+  <meta property="og:image" content="img/og.png">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content='JustFYI — that "free" tool isn''t free.'>
+  <meta name="twitter:description" content="Know whether an online tool is actually free, freemium, paid, or abandoned — before you waste time on it.">
+  <meta name="twitter:image" content="img/og.png">
+  <style>
+    @font-face {
+      font-family: 'Inter';
+      src: url('fonts/InterVariable.woff2') format('woff2');
+      font-weight: 100 900;
+      font-display: swap;
+    }
+
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --surface: #FFFBFE;
+      --surface-1: #F4EFFA;
+      --surface-2: #EDE7F6;
+      --surface-3: #E8E0F0;
+      --on-surface: #1C1B1F;
+      --on-surface-variant: #49454F;
+      --outline: #79747E;
+      --outline-variant: #CAC4D0;
+      --primary: #006C49;
+      --primary-hover: #005A3C;
+      --primary-container: #8CF8C0;
+      --on-primary: #FFFFFF;
+      --on-primary-container: #002114;
+      --secondary: #4F6354;
+      --tertiary: #6E3BD8;
+      --error: #BA1A1A;
+      --warning: #F59E0B;
+      --status-free: #006C49;
+      --status-limits: #F59E0B;
+      --status-login: #005BC4;
+      --status-paid: #9F403D;
+      --status-abandoned: #6B7280;
+      --status-unrated: #6E3BD8;
+      --nav-bg: rgba(255, 251, 254, 0.85);
+      --inverse-surface: #1C1B1F;
+      --inverse-on: #FFFFFF;
+      --inverse-on-variant: rgba(255,255,255,0.7);
+      --inverse-chip: rgba(255,255,255,0.1);
+    }
+
+    :root[data-theme="dark"] {
+      --surface: #141218;
+      --surface-1: #1D1B20;
+      --surface-2: #211F26;
+      --surface-3: #2B2930;
+      --on-surface: #E6E0E9;
+      --on-surface-variant: #CAC4D0;
+      --outline: #938F99;
+      --outline-variant: #49454F;
+      --primary: #4FB486;
+      --primary-hover: #73C9A1;
+      --primary-container: #00513A;
+      --on-primary: #00391F;
+      --on-primary-container: #8CF8C0;
+      --status-free: #4FB486;
+      --status-paid: #E99693;
+      --status-abandoned: #A3A8AF;
+      --status-unrated: #C8B6FF;
+      --nav-bg: rgba(20, 18, 24, 0.75);
+      --inverse-surface: #211F26;
+      --inverse-on: #E6E0E9;
+      --inverse-on-variant: rgba(230,224,233,0.7);
+      --inverse-chip: rgba(230,224,233,0.08);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme]) {
+        --surface: #141218;
+        --surface-1: #1D1B20;
+        --surface-2: #211F26;
+        --surface-3: #2B2930;
+        --on-surface: #E6E0E9;
+        --on-surface-variant: #CAC4D0;
+        --outline: #938F99;
+        --outline-variant: #49454F;
+        --primary: #4FB486;
+        --primary-hover: #73C9A1;
+        --primary-container: #00513A;
+        --on-primary: #00391F;
+        --on-primary-container: #8CF8C0;
+        --status-free: #4FB486;
+        --status-paid: #E99693;
+        --status-abandoned: #A3A8AF;
+        --status-unrated: #C8B6FF;
+        --nav-bg: rgba(20, 18, 24, 0.75);
+        --inverse-surface: #211F26;
+        --inverse-on: #E6E0E9;
+        --inverse-on-variant: rgba(230,224,233,0.7);
+        --inverse-chip: rgba(230,224,233,0.08);
+      }
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      color: var(--on-surface);
+      background: var(--surface);
+      -webkit-font-smoothing: antialiased;
+      line-height: 1.6;
+    }
+
+    .icon {
+      width: 1.25em;
+      height: 1.25em;
+      vertical-align: -0.25em;
+      fill: currentColor;
+    }
+
+    /* ── Layout ── */
+    .container { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
+    .section { padding: 96px 0; }
+
+    /* ── Nav ── */
+    nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      background: var(--nav-bg);
+      backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--outline-variant);
+    }
+    .nav-inner {
+      max-width: 1120px; margin: 0 auto; padding: 0 24px;
+      display: flex; align-items: center; justify-content: space-between;
+      height: 64px;
+    }
+    .nav-brand { font-size: 20px; font-weight: 800; color: var(--on-surface); letter-spacing: -0.02em; text-decoration: none; }
+    .nav-links { display: flex; gap: 32px; align-items: center; }
+    .nav-links a { font-size: 14px; font-weight: 500; color: var(--on-surface-variant); text-decoration: none; transition: color 0.15s; }
+    .nav-links a:hover { color: var(--primary); }
+
+    /* Theme toggle */
+    .theme-toggle {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 36px; height: 36px; padding: 0;
+      background: transparent; border: 1px solid var(--outline-variant);
+      border-radius: 100px; color: var(--on-surface-variant); cursor: pointer;
+      transition: color 0.15s, background 0.15s, border-color 0.15s;
+    }
+    .theme-toggle:hover { color: var(--on-surface); background: var(--surface-1); border-color: var(--outline); }
+    .theme-icon { width: 18px; height: 18px; fill: currentColor; }
+    /* Sun shown in dark mode (to switch to light), moon shown in light mode. */
+    .theme-icon-sun { display: none; }
+    .theme-icon-moon { display: block; }
+    :root[data-theme="dark"] .theme-icon-sun,
+    :root:not([data-theme]) .theme-icon-sun { display: none; }
+    :root[data-theme="dark"] .theme-icon-moon,
+    :root:not([data-theme]) .theme-icon-moon { display: block; }
+    :root[data-theme="dark"] .theme-icon-sun { display: block; }
+    :root[data-theme="dark"] .theme-icon-moon { display: none; }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme]) .theme-icon-sun { display: block; }
+      :root:not([data-theme]) .theme-icon-moon { display: none; }
+    }
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      font-family: inherit; font-size: 14px; font-weight: 600;
+      padding: 10px 24px; border-radius: 100px; border: none;
+      cursor: pointer; text-decoration: none; transition: all 0.15s;
+    }
+    .btn-primary, a.btn-primary { background: var(--primary); color: #fff; }
+    .btn-primary:hover, a.btn-primary:hover { background: var(--primary-hover); color: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.12), 0 4px 8px rgba(0,0,0,0.04); }
+    .btn-outline { background: transparent; color: var(--primary); border: 1px solid var(--outline); }
+    .btn-outline:hover { background: var(--surface-1); }
+    .btn-lg { padding: 16px 32px; font-size: 16px; }
+
+    /* ── Hero ── */
+    .hero { padding-top: 160px; padding-bottom: 96px; }
+    .hero-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 64px; align-items: center; }
+    .hero h1 { font-size: 56px; font-weight: 800; letter-spacing: -0.03em; line-height: 1.08; margin-bottom: 24px; }
+    .hero h1 em { font-style: normal; color: var(--status-paid); }
+    .hero p { font-size: 18px; color: var(--on-surface-variant); max-width: 480px; margin-bottom: 32px; }
+    .hero-actions { display: flex; gap: 12px; flex-wrap: wrap; }
+
+    /* ── Hero carousel ── */
+    .hero-carousel {
+      position: relative;
+      width: 100%;
+      max-width: 400px;
+    }
+    .hero-carousel-inner {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 800 / 758;
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.10), 0 2px 8px rgba(0,0,0,0.05);
+    }
+    .hero-carousel-inner img {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      object-fit: cover;
+      opacity: 0;
+      transition: opacity 0.5s ease-in-out;
+    }
+    .hero-carousel-inner img.active { opacity: 1; }
+    .hero-dots {
+      display: flex; justify-content: center; gap: 8px;
+      margin-top: 20px;
+    }
+    .hero-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--outline-variant);
+      border: none; cursor: pointer; padding: 0;
+      transition: background 0.2s;
+    }
+    .hero-dot.active { background: var(--primary); }
+
+    /* ── Problem ── */
+    .problem { background: var(--surface-1); }
+    .problem-label { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--status-paid); margin-bottom: 8px; }
+    .problem h2 { font-size: 36px; font-weight: 800; letter-spacing: -0.02em; margin-bottom: 48px; text-align: center; }
+    .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+    .step {
+      background: var(--surface);
+      border-radius: 16px; padding: 32px;
+      position: relative;
+    }
+    .step-number {
+      font-size: 48px; font-weight: 900; color: var(--outline-variant);
+      line-height: 1; margin-bottom: 16px; opacity: 0.4;
+    }
+    .step h3 { font-size: 16px; font-weight: 700; margin-bottom: 8px; }
+    .step p { font-size: 14px; color: var(--on-surface-variant); line-height: 1.6; }
+    .step-bad { border: 2px solid var(--status-paid); }
+    .step-bad h3 { color: var(--status-paid); }
+    .step-bad .step-number { color: var(--status-paid); opacity: 0.3; }
+
+    /* ── How it works ── */
+    .how-label { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--primary); margin-bottom: 8px; text-align: center; }
+    .how h2 { font-size: 36px; font-weight: 800; letter-spacing: -0.02em; margin-bottom: 16px; text-align: center; }
+    .how > p { font-size: 16px; color: var(--on-surface-variant); text-align: center; max-width: 520px; margin: 0 auto 48px; }
+
+    /* Browser mockup */
+    .browser-mock {
+      max-width: 640px; margin: 0 auto 56px;
+      background: var(--surface); border-radius: 12px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 4px 12px rgba(0,0,0,0.04);
+      border: 1px solid var(--outline-variant);
+      overflow: hidden;
+    }
+    .browser-bar {
+      display: flex; align-items: center; gap: 12px;
+      padding: 12px 16px;
+      background: var(--surface-1);
+      border-bottom: 1px solid var(--outline-variant);
+    }
+    .browser-dots { display: flex; gap: 6px; }
+    .browser-dots span { width: 10px; height: 10px; border-radius: 50%; background: var(--outline-variant); }
+    .browser-url {
+      flex: 1; background: var(--surface); border-radius: 8px;
+      padding: 6px 12px; font-size: 13px; color: var(--on-surface-variant);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+
+    /* Status grid */
+    .status-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; }
+    .status-card {
+      text-align: center; padding: 24px 16px;
+      background: var(--surface); border-radius: 16px;
+      border: 1px solid var(--outline-variant);
+      transition: transform 0.15s, box-shadow 0.15s;
+    }
+    .status-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+    }
+    .status-card img { width: 48px; height: 48px; margin: 0 auto 12px; display: block; }
+    .status-card h4 { font-size: 13px; font-weight: 700; margin-bottom: 4px; }
+    .status-card p { font-size: 11px; color: var(--on-surface-variant); line-height: 1.4; }
+
+    /* ── Features ── */
+    .features { background: var(--surface-1); }
+    .features h2 { font-size: 36px; font-weight: 800; letter-spacing: -0.02em; margin-bottom: 48px; }
+    .bento { display: grid; grid-template-columns: repeat(12, 1fr); gap: 16px; }
+    .bento-card {
+      border-radius: 24px; padding: 32px;
+      display: flex; flex-direction: column;
+      min-height: 220px;
+    }
+    .bento-card h3 { font-size: 22px; font-weight: 700; margin-bottom: 8px; }
+    .bento-card p { font-size: 14px; line-height: 1.6; }
+    .bento-icon {
+      width: 48px; height: 48px; border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+      margin-bottom: 20px;
+    }
+    .bento-1 { grid-column: span 8; background: var(--surface); border: 1px solid var(--outline-variant); }
+    .bento-1 .bento-icon { background: rgba(0,108,73,0.1); color: var(--primary); }
+    .bento-1 p { color: var(--on-surface-variant); max-width: 400px; }
+    .bento-2 { grid-column: span 4; background: var(--tertiary); color: white; }
+    .bento-2 p { color: rgba(255,255,255,0.8); }
+    .bento-3 { grid-column: span 5; background: var(--surface); border: 1px solid var(--outline-variant); }
+    .bento-3 p { color: var(--on-surface-variant); }
+    .bento-4 { grid-column: span 7; background: var(--inverse-surface); color: var(--inverse-on); position: relative; overflow: hidden; }
+    .bento-4 p { color: var(--inverse-on-variant); max-width: 420px; }
+    .bento-tags { display: flex; gap: 8px; margin-top: auto; padding-top: 16px; }
+    .bento-tag {
+      font-size: 11px; font-family: monospace; text-transform: uppercase;
+      letter-spacing: 0.05em; padding: 4px 12px; border-radius: 100px;
+      background: var(--inverse-chip);
+    }
+    .suggestion-card {
+      background: var(--surface-1); border-radius: 12px; padding: 16px; margin-bottom: 16px;
+    }
+    .suggestion-label {
+      font-size: 10px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.08em; color: var(--on-surface-variant); margin-bottom: 8px;
+    }
+    .suggestion-tag {
+      font-size: 9px; font-weight: 700; background: var(--primary);
+      color: white; padding: 2px 6px; border-radius: 4px; float: right;
+    }
+    .suggestion-title { font-size: 15px; font-weight: 700; }
+    .suggestion-desc { font-size: 12px; color: var(--on-surface-variant); margin-top: 4px; }
+
+    /* ── CTA ── */
+    .cta { text-align: center; }
+    .cta h2 { font-size: 40px; font-weight: 800; letter-spacing: -0.02em; margin-bottom: 16px; }
+    .cta p { font-size: 18px; color: var(--on-surface-variant); margin-bottom: 40px; }
+
+    /* ── Newsletter ── */
+    .newsletter { text-align: center; background: var(--surface-1); }
+    .newsletter h2 { font-size: 28px; font-weight: 800; letter-spacing: -0.02em; margin-bottom: 12px; }
+    .newsletter p { font-size: 15px; color: var(--on-surface-variant); margin-bottom: 24px; }
+    .newsletter-form {
+      display: flex; gap: 8px; max-width: 460px; margin: 0 auto;
+      flex-wrap: wrap; justify-content: center;
+    }
+    .newsletter-form input[type="email"] {
+      flex: 1 1 240px; min-width: 0;
+      padding: 12px 16px; font: inherit; font-size: 15px;
+      border: 1px solid var(--outline-variant); border-radius: 100px;
+      background: var(--surface); color: var(--on-surface);
+    }
+    .newsletter-form input[type="email"]:focus {
+      outline: none; border-color: var(--primary);
+    }
+    .newsletter-form button {
+      padding: 12px 24px; font: inherit; font-size: 15px; font-weight: 600;
+      border: none; border-radius: 100px; cursor: pointer;
+      background: var(--primary); color: #fff;
+    }
+    .newsletter-form button:hover { background: var(--primary-hover); }
+    .newsletter-form button:disabled { opacity: 0.6; cursor: not-allowed; }
+    .newsletter-consent {
+      font-size: 12px; color: var(--outline); margin-top: 16px; max-width: 460px;
+      margin-left: auto; margin-right: auto;
+    }
+    .newsletter-status { margin-top: 16px; font-size: 14px; min-height: 20px; }
+    .newsletter-status.ok { color: var(--primary); }
+    .newsletter-status.err { color: var(--status-paid); }
+
+    /* ── Privacy ── */
+    .privacy { background: var(--surface-1); }
+    .privacy h2 { font-size: 28px; font-weight: 800; letter-spacing: -0.02em; margin-bottom: 24px; }
+    .privacy-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 24px; }
+    .privacy-item {
+      background: var(--surface); border-radius: 16px; padding: 24px;
+      border: 1px solid var(--outline-variant);
+    }
+    .privacy-item h3 { font-size: 15px; font-weight: 700; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+    .privacy-item p { font-size: 13px; color: var(--on-surface-variant); line-height: 1.6; }
+    .privacy-icon { font-size: 20px; color: var(--primary); }
+
+    /* ── Footer ── */
+    footer {
+      border-top: 1px solid var(--outline-variant);
+      padding: 32px 0;
+    }
+    .footer-inner {
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .footer-brand { font-size: 16px; font-weight: 800; color: var(--on-surface); }
+    .footer-links { display: flex; gap: 24px; }
+    .footer-links a { font-size: 13px; color: var(--on-surface-variant); text-decoration: none; }
+    .footer-links a:hover { color: var(--primary); }
+    .footer-copy { font-size: 12px; color: var(--outline); }
+
+    /* ── Responsive ── */
+    @media (max-width: 768px) {
+      .hero-grid { grid-template-columns: 1fr; }
+      .hero h1 { font-size: 36px; }
+      .hero-carousel { max-width: 320px; }
+      .steps { grid-template-columns: 1fr; }
+      .status-grid { grid-template-columns: repeat(3, 1fr); }
+      .bento { display: flex; flex-direction: column; }
+      .privacy-grid { grid-template-columns: 1fr; }
+      .nav-links { display: none; }
+      .footer-inner { flex-direction: column; gap: 16px; text-align: center; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- SVG icon sprite -->
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
+  <symbol id="i-download" viewBox="0 -960 960 960"><path d="M480-320 280-520l56-58 104 104v-326h80v326l104-104 56 58-200 200ZM240-160q-33 0-56.5-23.5T160-240v-120h80v120h480v-120h80v120q0 33-23.5 56.5T720-160H240Z"/></symbol>
+  <symbol id="i-visibility" viewBox="0 -960 960 960"><path d="M607.5-372.5Q660-425 660-500t-52.5-127.5Q555-680 480-680t-127.5 52.5Q300-575 300-500t52.5 127.5Q405-320 480-320t127.5-52.5Zm-204-51Q372-455 372-500t31.5-76.5Q435-608 480-608t76.5 31.5Q588-545 588-500t-31.5 76.5Q525-392 480-392t-76.5-31.5ZM214-281.5Q94-363 40-500q54-137 174-218.5T480-800q146 0 266 81.5T920-500q-54 137-174 218.5T480-200q-146 0-266-81.5ZM480-500Zm207.5 160.5Q782-399 832-500q-50-101-144.5-160.5T480-720q-113 0-207.5 59.5T128-500q50 101 144.5 160.5T480-280q113 0 207.5-59.5Z"/></symbol>
+  <symbol id="i-group" viewBox="0 -960 960 960"><path d="M40-160v-112q0-34 17.5-62.5T104-378q62-31 126-46.5T360-440q66 0 130 15.5T616-378q29 15 46.5 43.5T680-272v112H40Zm720 0v-120q0-44-24.5-84.5T666-434q51 6 96 20.5t84 35.5q36 20 55 44.5t19 53.5v120H760ZM247-527q-47-47-47-113t47-113q47-47 113-47t113 47q47 47 47 113t-47 113q-47 47-113 47t-113-47Zm466 0q-47 47-113 47-11 0-28-2.5t-28-5.5q27-32 41.5-71t14.5-81q0-42-14.5-81T544-792q14-5 28-6.5t28-1.5q66 0 113 47t47 113q0 66-47 113ZM120-240h480v-32q0-11-5.5-20T580-306q-54-27-109-40.5T360-360q-56 0-111 13.5T140-306q-9 5-14.5 14t-5.5 20v32Zm296.5-343.5Q440-607 440-640t-23.5-56.5Q393-720 360-720t-56.5 23.5Q280-673 280-640t23.5 56.5Q327-560 360-560t56.5-23.5ZM360-240Zm0-400Z"/></symbol>
+  <symbol id="i-verified" viewBox="0 -960 960 960"><path d="m344-60-76-128-144-32 14-148-98-112 98-112-14-148 144-32 76-128 136 58 136-58 76 128 144 32-14 148 98 112-98 112 14 148-144 32-76 128-136-58-136 58Zm34-102 102-44 104 44 56-96 110-26-10-112 74-84-74-86 10-112-110-24-58-96-102 44-104-44-56 96-110 24 10 112-74 86 74 84-10 114 110 24 58 96Zm102-318Zm-42 142 226-226-56-58-170 170-86-84-56 56 142 142Z"/></symbol>
+  <symbol id="i-lock" viewBox="0 -960 960 960"><path d="M240-80q-33 0-56.5-23.5T160-160v-400q0-33 23.5-56.5T240-640h40v-80q0-83 58.5-141.5T480-920q83 0 141.5 58.5T680-720v80h40q33 0 56.5 23.5T800-560v400q0 33-23.5 56.5T720-80H240Zm0-80h480v-400H240v400Zm296.5-143.5Q560-327 560-360t-23.5-56.5Q513-440 480-440t-56.5 23.5Q400-393 400-360t23.5 56.5Q447-280 480-280t56.5-23.5ZM360-640h240v-80q0-50-35-85t-85-35q-50 0-85 35t-35 85v80ZM240-160v-400 400Z"/></symbol>
+  <symbol id="i-code" viewBox="0 -960 960 960"><path d="M320-240 80-480l240-240 57 57-184 184 183 183-56 56Zm320 0-57-57 184-184-183-183 56-56 240 240-240 240Z"/></symbol>
+</svg>
+
+<!-- Nav -->
+<nav>
+  <div class="nav-inner">
+    <a href="#" class="nav-brand">JustFYI</a>
+    <div class="nav-links">
+      <a href="#how-it-works">How it Works</a>
+      <a href="#features">Features</a>
+      <a href="#privacy">Privacy</a>
+      <button id="theme-toggle" class="theme-toggle" aria-label="Toggle theme" type="button">
+        <svg class="theme-icon theme-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="4"/>
+          <line x1="12" y1="2" x2="12" y2="4"/>
+          <line x1="12" y1="20" x2="12" y2="22"/>
+          <line x1="2" y1="12" x2="4" y2="12"/>
+          <line x1="20" y1="12" x2="22" y2="12"/>
+          <line x1="4.93" y1="4.93" x2="6.34" y2="6.34"/>
+          <line x1="17.66" y1="17.66" x2="19.07" y2="19.07"/>
+          <line x1="4.93" y1="19.07" x2="6.34" y2="17.66"/>
+          <line x1="17.66" y1="6.34" x2="19.07" y2="4.93"/>
+        </svg>
+        <svg class="theme-icon theme-icon-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      </button>
+      <a href="#cta" class="btn btn-primary">Install for Chrome</a>
+    </div>
+  </div>
+</nav>
+
+<!-- Hero -->
+<section class="hero">
+  <div class="container">
+    <div class="hero-grid">
+      <div>
+        <h1>Just FYI — that <em>"free" tool</em> isn't free.</h1>
+        <p>You searched "free PDF merge". You clicked the top result. But it's paid, or freemium, or long abandoned. JustFYI tells you which — before you upload a single file.</p>
+        <div class="hero-actions">
+          <a href="#cta" class="btn btn-primary btn-lg">
+            <svg class="icon" aria-hidden="true"><use href="#i-download"/></svg>
+            Install for Chrome
+          </a>
+          <a href="#how-it-works" class="btn btn-outline btn-lg">See how it works</a>
+        </div>
+      </div>
+      <div class="hero-carousel" id="hero-carousel">
+        <div class="hero-carousel-inner">
+          <img src="img/hero-popup-1.png" alt="JustFYI flagging totallyfreepdf.com as Paid with free alternatives" class="active"/>
+          <img src="img/hero-popup-2.png" alt="JustFYI confirming stirling-pdf.com is genuinely free"/>
+          <img src="img/hero-popup-3.png" alt="JustFYI showing freeimagetools.io has limits with free alternatives"/>
+        </div>
+        <div class="hero-dots">
+          <button class="hero-dot active" data-slide="0" aria-label="Slide 1"></button>
+          <button class="hero-dot" data-slide="1" aria-label="Slide 2"></button>
+          <button class="hero-dot" data-slide="2" aria-label="Slide 3"></button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- The Problem -->
+<section class="section problem">
+  <div class="container">
+    <div class="problem-label" style="text-align:center">The problem</div>
+    <h2>"Free" almost never means free.</h2>
+    <div class="steps">
+      <div class="step">
+        <div class="step-number">1</div>
+        <h3>You upload your file</h3>
+        <p>Clean UI, no login wall. You drag in your 40-page PDF. It starts processing immediately. Looks legit.</p>
+      </div>
+      <div class="step">
+        <div class="step-number">2</div>
+        <h3>You do all the editing</h3>
+        <p>15 minutes of cropping, merging, converting. Everything works. You hit the download button.</p>
+      </div>
+      <div class="step step-bad">
+        <div class="step-number">3</div>
+        <h3>Then the paywall</h3>
+        <p>"Subscribe for $9.99/month to download." Your work is hostage. Your time is gone. The "free" was a lie.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- How it Works -->
+<section class="section" id="how-it-works">
+  <div class="container">
+    <div class="how">
+      <div class="how-label">How it works</div>
+      <h2>One icon. Instant verdict.</h2>
+      <p>JustFYI changes the icon in your toolbar the moment you land on a tool site. You see the verdict without clicking a thing.</p>
+    </div>
+
+    <div class="browser-mock">
+      <div class="browser-bar">
+        <div class="browser-dots"><span></span><span></span><span></span></div>
+        <div class="browser-url">
+          <span>totallyfreepdf.com/merge</span>
+          <img src="img/paid-sm.png" alt="Paid" style="width:16px;height:16px;"/>
+        </div>
+      </div>
+    </div>
+
+    <div class="status-grid">
+      <div class="status-card">
+        <img src="img/free.png" alt="Free"/>
+        <h4>Free</h4>
+        <p>No catches. Actually free.</p>
+      </div>
+      <div class="status-card">
+        <img src="img/limits.png" alt="Freemium"/>
+        <h4>Freemium</h4>
+        <p>Free core, paid extras.</p>
+      </div>
+      <div class="status-card">
+        <img src="img/paid.png" alt="Paid"/>
+        <h4>Paid</h4>
+        <p>Will charge you. Period.</p>
+      </div>
+      <div class="status-card">
+        <img src="img/abandoned.png" alt="Abandoned"/>
+        <h4>Abandoned</h4>
+        <p>Dead project. Move on.</p>
+      </div>
+      <div class="status-card">
+        <img src="img/unrated.png" alt="Unrated"/>
+        <h4>Unrated</h4>
+        <p>Not rated yet. Help out.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Features -->
+<section class="section features" id="features">
+  <div class="container">
+    <h2>Not just a warning. A way out.</h2>
+    <div class="bento">
+      <div class="bento-card bento-1">
+        <div class="bento-icon">
+          <svg class="icon" style="width:28px;height:28px;"><use href="#i-visibility"/></svg>
+        </div>
+        <h3>Know before you start</h3>
+        <p>The toolbar icon changes the moment you land on a tool. Red means paid, green means free. No clicking, no guessing, no wasted time.</p>
+      </div>
+      <div class="bento-card bento-2">
+        <svg class="icon" style="width:36px;height:36px; margin-bottom:auto;"><use href="#i-group"/></svg>
+        <h3>Hand-curated, not scraped</h3>
+        <p>Every tool is reviewed by a human before it lands in the database. No algorithms guessing from pricing pages, no partnerships skewing what you see.</p>
+      </div>
+      <div class="bento-card bento-3">
+        <div class="suggestion-card">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span class="suggestion-label">Suggestion</span>
+            <span class="suggestion-tag">FREE</span>
+          </div>
+          <div class="suggestion-title">Use PDF24 instead</div>
+          <div class="suggestion-desc">Free. No limits. No login.</div>
+        </div>
+        <h3>Instant alternatives</h3>
+        <p>Paywalled? JustFYI points you at actually-free tools in the same category.</p>
+      </div>
+      <div class="bento-card bento-4">
+        <div>
+          <h3>Open source. No tracking.</h3>
+          <p>All lookups happen locally. The database is public. The code is auditable. No analytics, no telemetry, no data leaves your browser.</p>
+        </div>
+        <div class="bento-tags">
+          <span class="bento-tag">Apache 2.0</span>
+          <span class="bento-tag">v1.0.0</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="section cta" id="cta">
+  <div class="container">
+    <h2>Know before you click.</h2>
+    <p>Next time you search "free PDF merge" — you'll know the verdict before you upload.</p>
+    <a href="#" class="btn btn-primary btn-lg">
+      <svg class="icon" aria-hidden="true"><use href="#i-download"/></svg>
+      Add to Chrome — it's free (for real)
+    </a>
+  </div>
+</section>
+
+<!-- Newsletter -->
+<section class="section newsletter" id="newsletter">
+  <div class="container">
+    <h2>The best new free tools, every week.</h2>
+    <p>One short email a week with the best genuinely-free tools we've rated. No filler.</p>
+    <form class="newsletter-form" id="newsletter-form" novalidate>
+      <input type="email" name="email" id="newsletter-email" placeholder="you@example.com" autocomplete="email" required>
+      <button type="submit" id="newsletter-submit">Subscribe</button>
+    </form>
+    <div class="newsletter-status" id="newsletter-status" role="status" aria-live="polite"></div>
+    <p class="newsletter-consent">
+      By subscribing, you consent to JustFYI storing your email address to send the weekly picks.
+      Unsubscribe anytime. See our <a href="privacy.html" style="color:var(--primary);">privacy policy</a>.
+    </p>
+  </div>
+</section>
+
+<!-- Privacy -->
+<section class="section privacy" id="privacy">
+  <div class="container">
+    <h2>Privacy at a glance</h2>
+    <p style="color:var(--on-surface-variant); margin-bottom:32px; max-width:640px;">Privacy is a core principle, not an afterthought. Here is the short version of what we collect and why.</p>
+    <div class="privacy-grid">
+      <div class="privacy-item">
+        <h3><svg class="icon privacy-icon"><use href="#i-visibility"/></svg> No browsing data collected</h3>
+        <p>The extension never sends your browsing history, URLs, or page content to any server. All lookups happen locally against a cached database stored on your device.</p>
+      </div>
+      <div class="privacy-item">
+        <h3><svg class="icon privacy-icon"><use href="#i-verified"/></svg> No third-party analytics</h3>
+        <p>No Google Analytics, no tracking pixels, no fingerprinting. We don't know who you are, what sites you visit, or how you use the extension.</p>
+      </div>
+      <div class="privacy-item">
+        <h3><svg class="icon privacy-icon"><use href="#i-lock"/></svg> No account needed</h3>
+        <p>Rating a tool requires no login, no email, no account. Submissions are anonymous -- we store the rating data but not who sent it (your IP is briefly held in a separate rate-limit log, never longer than ~1 hour). The optional newsletter signup is the one place we store an email, and only so we can send you the weekly picks. Unsubscribe anytime.</p>
+      </div>
+      <div class="privacy-item">
+        <h3><svg class="icon privacy-icon"><use href="#i-code"/></svg> Open source and auditable</h3>
+        <p>The full source code is public on <a href="https://github.com/VladimirWrites/justfyi" style="color:var(--primary)">GitHub</a>. The ratings database is public. Anyone can verify exactly what data the extension accesses and stores.</p>
+      </div>
+    </div>
+    <p style="color:var(--outline); font-size:13px; margin-top:24px;">This is the short version. <a href="privacy.html" style="color:var(--primary);">Read the full privacy policy →</a></p>
+  </div>
+</section>
+
+<!-- Footer -->
+<footer>
+  <div class="container">
+    <div class="footer-inner">
+      <span class="footer-brand">JustFYI</span>
+      <div class="footer-links">
+        <a href="privacy.html">Privacy Policy</a>
+        <a href="https://github.com/VladimirWrites/justfyi">GitHub</a>
+      </div>
+      <span class="footer-copy">Just FYI. No tracking. No nonsense.</span>
+    </div>
+  </div>
+</footer>
+
+<script>
+(function() {
+  const carousel = document.getElementById('hero-carousel');
+  const slides = carousel.querySelectorAll('.hero-carousel-inner img');
+  const dots = carousel.querySelectorAll('.hero-dot');
+  let current = 0;
+  let timer;
+
+  function goTo(index) {
+    slides[current].classList.remove('active');
+    dots[current].classList.remove('active');
+    current = index;
+    slides[current].classList.add('active');
+    dots[current].classList.add('active');
+  }
+
+  function next() {
+    goTo((current + 1) % slides.length);
+  }
+
+  function startTimer() {
+    timer = setInterval(next, 5000);
+  }
+
+  dots.forEach(dot => {
+    dot.addEventListener('click', () => {
+      clearInterval(timer);
+      goTo(parseInt(dot.dataset.slide));
+      startTimer();
+    });
+  });
+
+  startTimer();
+})();
+
+// Newsletter signup
+(function() {
+  const API_BASE = (location.hostname === "localhost" || location.hostname === "127.0.0.1")
+    ? "http://localhost:8787"
+    : "https://justfyi-api.YOUR_SUBDOMAIN.workers.dev";
+  const form = document.getElementById("newsletter-form");
+  const emailEl = document.getElementById("newsletter-email");
+  const btn = document.getElementById("newsletter-submit");
+  const status = document.getElementById("newsletter-status");
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const email = emailEl.value.trim();
+    if (!email) return;
+
+    btn.disabled = true;
+    status.className = "newsletter-status";
+    status.textContent = "Subscribing…";
+
+    try {
+      const res = await fetch(API_BASE + "/subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.success) {
+        status.className = "newsletter-status ok";
+        status.textContent = "Thanks — you're on the list.";
+        emailEl.value = "";
+      } else {
+        status.className = "newsletter-status err";
+        status.textContent = data.error || "Something went wrong. Try again later.";
+        btn.disabled = false;
+      }
+    } catch {
+      status.className = "newsletter-status err";
+      status.textContent = "Network error. Try again later.";
+      btn.disabled = false;
+    }
+  });
+})();
+
+// Theme toggle
+(function() {
+  const btn = document.getElementById('theme-toggle');
+  if (!btn) return;
+  btn.addEventListener('click', () => {
+    const current = document.documentElement.getAttribute('data-theme');
+    const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const effective = current || (systemDark ? 'dark' : 'light');
+    const next = effective === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    try { localStorage.setItem('theme', next); } catch (e) {}
+  });
+})();
+</script>
+</body>
+</html>

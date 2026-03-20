@@ -1,0 +1,1180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JustFYI Extension Preview</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
+  <style>
+    /* ── Page shell ── */
+    body {
+      background: #161819;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 40px 20px;
+      font-family: "Inter", system-ui, sans-serif;
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .page-title {
+      color: #E4E9EA;
+      font-size: 24px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin-bottom: 4px;
+    }
+
+    .page-subtitle {
+      color: #5A6061;
+      font-size: 13px;
+      margin-bottom: 48px;
+    }
+
+    .preview-wrapper {
+      display: flex;
+      gap: 32px;
+      flex-wrap: wrap;
+      justify-content: center;
+      align-items: flex-start;
+      max-width: 1600px;
+    }
+
+    .preview-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin-bottom: 40px;
+    }
+
+    .scenario-label {
+      color: #757C7D;
+      font-size: 10px;
+      margin-bottom: 10px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    /* ── Browser chrome ── */
+    .browser-frame {
+      width: 340px;
+      border-radius: 10px;
+      overflow: hidden;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.5);
+    }
+
+    .browser-titlebar {
+      background: #dee1e6;
+      padding: 10px 12px 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .browser-dots {
+      display: flex;
+      gap: 6px;
+      padding-bottom: 8px;
+    }
+
+    .browser-dots span {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+    }
+
+    .dot-red { background: #ff5f57; }
+    .dot-yellow { background: #ffbd2e; }
+    .dot-green { background: #28c840; }
+
+    .browser-toolbar {
+      background: #dee1e6;
+      padding: 0 10px 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .browser-url {
+      flex: 1;
+      background: #fff;
+      border-radius: 20px;
+      padding: 6px 12px;
+      font-size: 12px;
+      color: #555;
+    }
+
+    .toolbar-ext {
+      position: relative;
+    }
+
+    .ext-icon-img {
+      width: 22px;
+      height: 22px;
+      border-radius: 5px;
+      display: block;
+    }
+
+    /* ── Popup connector ── */
+    .popup-connector {
+      width: 340px;
+      display: flex;
+      justify-content: flex-end;
+      padding-right: 18px;
+    }
+
+    .popup-arrow {
+      width: 0;
+      height: 0;
+      border-left: 8px solid transparent;
+      border-right: 8px solid transparent;
+      border-bottom: 8px solid #F9F9F9;
+    }
+
+    /* ═══════════════════════════════════════════
+       Popup frame — mirrors popup.css tokens
+       ═══════════════════════════════════════════ */
+    .popup-frame {
+      width: 340px;
+      background: #F9F9F9;
+      border-radius: 0 0 12px 12px;
+      box-shadow: 0 10px 30px rgba(45, 52, 53, 0.25);
+      overflow: hidden;
+    }
+
+    .popup-frame * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    .popup-frame .material-symbols-outlined {
+      font-variation-settings: 'FILL' 1, 'wght' 500, 'GRAD' 0, 'opsz' 24;
+      font-size: 20px;
+      vertical-align: middle;
+      user-select: none;
+    }
+
+    .popup-frame .app {
+      padding: 16px;
+      font-family: "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif;
+      font-size: 14px;
+      color: #2D3435;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    /* Header */
+    .popup-frame header { padding-bottom: 0; }
+    .popup-frame .header-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .popup-frame h1 {
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      color: #2D3435;
+    }
+    .popup-frame .header-icon {
+      font-size: 16px;
+      color: #ADB3B4;
+    }
+    .popup-frame .domain {
+      font-size: 12px;
+      color: #5A6061;
+      margin-top: 2px;
+    }
+    .popup-frame h3 {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #5A6061;
+      margin-bottom: 8px;
+    }
+
+    /* Rating card */
+    .popup-frame .rating-card {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 16px;
+      background: #F2F4F4;
+      border-radius: 6px;
+    }
+    .popup-frame .rating-icon-wrap {
+      width: 40px;
+      height: 40px;
+      border-radius: 22%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .popup-frame .rating-icon-wrap .material-symbols-outlined {
+      font-size: 22px;
+      color: #fff;
+      font-variation-settings: 'FILL' 1, 'wght' 700, 'GRAD' 0, 'opsz' 48;
+    }
+    .popup-frame .rating-info {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .popup-frame .rating-label {
+      font-size: 14px;
+      font-weight: 600;
+      color: #2D3435;
+    }
+    .popup-frame .rating-flags {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .popup-frame .flag {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      font-size: 11px;
+      font-weight: 500;
+      color: #5A6061;
+    }
+    .popup-frame .flag .material-symbols-outlined {
+      font-size: 14px;
+      font-variation-settings: 'FILL' 1, 'wght' 500, 'GRAD' 0, 'opsz' 20;
+    }
+
+    /* Status colors */
+    .status-free      { background: #006C49; }
+    .status-limits    { background: #F59E0B; }
+    .status-login     { background: #005BC4; }
+    .status-paid      { background: #9F403D; }
+    .status-abandoned { background: #6B7280; }
+    .status-unrated   { background: #6E3BD8; }
+    .status-default   { background: #475569; }
+
+    /* Alternatives */
+    .popup-frame .alternatives-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .popup-frame .alternatives-list li {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      background: #FFFFFF;
+      border-radius: 6px;
+      border: 1px solid rgba(173, 179, 180, 0.15);
+    }
+    .popup-frame .alt-icon-wrap {
+      width: 24px;
+      height: 24px;
+      border-radius: 22%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .popup-frame .alt-icon-wrap .material-symbols-outlined {
+      font-size: 14px;
+      color: #fff;
+      font-variation-settings: 'FILL' 1, 'wght' 700, 'GRAD' 0, 'opsz' 20;
+    }
+    .popup-frame .alt-name {
+      font-size: 13px;
+      font-weight: 500;
+      color: #2D3435;
+      flex: 1;
+    }
+    .popup-frame .alt-status {
+      font-size: 11px;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      white-space: nowrap;
+    }
+    .label-free   { color: #006C49; }
+    .label-limits { color: #F59E0B; }
+    .label-login  { color: #005BC4; }
+
+    /* Empty state */
+    .popup-frame .empty-state {
+      text-align: center;
+      padding: 24px 16px;
+    }
+    .popup-frame .empty-icon {
+      font-size: 32px;
+      color: #ADB3B4;
+      font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 48;
+      display: block;
+      margin-bottom: 8px;
+    }
+    .popup-frame .empty-state p {
+      font-size: 13px;
+      color: #5A6061;
+    }
+
+    /* Submit form */
+    .popup-frame .submit-section label {
+      display: block;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #5A6061;
+      margin-top: 8px;
+      margin-bottom: 4px;
+    }
+    .popup-frame .submit-section select,
+    .popup-frame .submit-section input[type="text"] {
+      width: 100%;
+      padding: 7px 8px;
+      background: #FFFFFF;
+      border: 1px solid rgba(173, 179, 180, 0.15);
+      border-radius: 6px;
+      font-size: 13px;
+      font-family: inherit;
+      color: #2D3435;
+    }
+    .popup-frame .checkbox-label {
+      display: flex !important;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      color: #2D3435;
+    }
+    .popup-frame .checkbox-label input { width: auto !important; accent-color: #006C49; }
+    .popup-frame .submit-btn {
+      margin-top: 12px;
+      width: 100%;
+      padding: 8px 16px;
+      background: linear-gradient(180deg, #006C49 0%, #005F40 100%);
+      color: #E1FFEC;
+      border: none;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+    .popup-frame .submit-btn .material-symbols-outlined {
+      font-size: 16px;
+      font-variation-settings: 'FILL' 1, 'wght' 500, 'GRAD' 0, 'opsz' 20;
+    }
+    .popup-frame .submit-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    /* Result messages */
+    .popup-frame .result-success {
+      margin-top: 8px;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      background: rgba(0, 108, 73, 0.08);
+      color: #006C49;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .popup-frame .result-success .material-symbols-outlined {
+      font-size: 16px;
+    }
+
+    /* Newsletter */
+    .popup-frame .newsletter-trigger {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 0;
+      background: none;
+      border: none;
+      font-family: inherit;
+      font-size: 12px;
+      color: #5A6061;
+      cursor: pointer;
+    }
+    .popup-frame .newsletter-icon {
+      font-size: 16px;
+      font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 20;
+    }
+    .popup-frame .expand-icon {
+      font-size: 18px;
+      margin-left: auto;
+    }
+    .popup-frame .expand-icon.rotated {
+      transform: rotate(180deg);
+    }
+    .popup-frame .newsletter-form {
+      display: flex;
+      gap: 6px;
+      margin-top: 8px;
+    }
+    .popup-frame .newsletter-form input {
+      flex: 1;
+      padding: 7px 8px;
+      background: #FFFFFF;
+      border: 1px solid rgba(173, 179, 180, 0.15);
+      border-radius: 6px;
+      font-size: 13px;
+      font-family: inherit;
+      color: #2D3435;
+    }
+    .popup-frame .newsletter-form button {
+      padding: 7px 12px;
+      background: #E4E9EA;
+      color: #2D3435;
+      border: none;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+
+<div class="page-title">JustFYI -- Extension Preview</div>
+<div class="page-subtitle">Dynamic icons change per-tab based on site status. No click needed to see the verdict.</div>
+
+<div class="preview-wrapper">
+
+  <!-- 1: Paid tool + alternatives -->
+  <div class="preview-container">
+    <div class="scenario-label">Paid tool</div>
+    <div class="browser-frame">
+      <div class="browser-titlebar">
+        <div class="browser-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+      </div>
+      <div class="browser-toolbar">
+        <div class="browser-url">smallpdf.com/merge-pdf</div>
+        <div class="toolbar-ext"><img class="ext-icon-img" src="extension/icons/paid48.png" alt="paid"></div>
+      </div>
+    </div>
+    <div class="popup-connector"><div class="popup-arrow"></div></div>
+    <div class="popup-frame">
+      <div class="app">
+        <header>
+          <div class="header-row">
+            <h1>JustFYI</h1>
+            <span class="material-symbols-outlined header-icon">sync</span>
+          </div>
+          <p class="domain">smallpdf.com</p>
+        </header>
+        <div class="rating-card">
+          <div class="rating-icon-wrap status-paid">
+            <span class="material-symbols-outlined">attach_money</span>
+          </div>
+          <div class="rating-info">
+            <span class="rating-label">Paid</span>
+            <div class="rating-flags">
+              <span class="flag"><span class="material-symbols-outlined">verified</span>Verified</span>
+            </div>
+          </div>
+        </div>
+        <div>
+          <h3>Free alternatives</h3>
+          <ul class="alternatives-list">
+            <li>
+              <div class="alt-icon-wrap status-free"><span class="material-symbols-outlined">check_circle</span></div>
+              <span class="alt-name">OS / stirling-pdf.com</span>
+              <span class="alt-status label-free">Free</span>
+            </li>
+            <li>
+              <div class="alt-icon-wrap status-limits"><span class="material-symbols-outlined">bolt</span></div>
+              <span class="alt-name">OS / ilovepdf.com</span>
+              <span class="alt-status label-limits">Free w/ limits</span>
+            </li>
+            <li>
+              <div class="alt-icon-wrap status-free"><span class="material-symbols-outlined">check_circle</span></div>
+              <span class="alt-name">pdf24.org</span>
+              <span class="alt-status label-free">Free</span>
+            </li>
+          </ul>
+        </div>
+        <div>
+          <button class="newsletter-trigger">
+            <span class="material-symbols-outlined newsletter-icon">mail</span>
+            <span>Get weekly free tool picks</span>
+            <span class="material-symbols-outlined expand-icon">expand_more</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2: Free + open source -->
+  <div class="preview-container">
+    <div class="scenario-label">Free + open source</div>
+    <div class="browser-frame">
+      <div class="browser-titlebar">
+        <div class="browser-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+      </div>
+      <div class="browser-toolbar">
+        <div class="browser-url">squoosh.app</div>
+        <div class="toolbar-ext"><img class="ext-icon-img" src="extension/icons/free48.png" alt="free"></div>
+      </div>
+    </div>
+    <div class="popup-connector"><div class="popup-arrow"></div></div>
+    <div class="popup-frame">
+      <div class="app">
+        <header>
+          <div class="header-row">
+            <h1>JustFYI</h1>
+            <span class="material-symbols-outlined header-icon">sync</span>
+          </div>
+          <p class="domain">squoosh.app</p>
+        </header>
+        <div class="rating-card">
+          <div class="rating-icon-wrap status-free">
+            <span class="material-symbols-outlined">check_circle</span>
+          </div>
+          <div class="rating-info">
+            <span class="rating-label">Free</span>
+            <div class="rating-flags">
+              <span class="flag"><span class="material-symbols-outlined">code</span>Open source</span>
+              <span class="flag"><span class="material-symbols-outlined">verified</span>Verified</span>
+            </div>
+          </div>
+        </div>
+        <div>
+          <button class="newsletter-trigger">
+            <span class="material-symbols-outlined newsletter-icon">mail</span>
+            <span>Get weekly free tool picks</span>
+            <span class="material-symbols-outlined expand-icon">expand_more</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3: Free with limits -->
+  <div class="preview-container">
+    <div class="scenario-label">Free with limits</div>
+    <div class="browser-frame">
+      <div class="browser-titlebar">
+        <div class="browser-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+      </div>
+      <div class="browser-toolbar">
+        <div class="browser-url">canva.com/design</div>
+        <div class="toolbar-ext"><img class="ext-icon-img" src="extension/icons/limits48.png" alt="limits"></div>
+      </div>
+    </div>
+    <div class="popup-connector"><div class="popup-arrow"></div></div>
+    <div class="popup-frame">
+      <div class="app">
+        <header>
+          <div class="header-row">
+            <h1>JustFYI</h1>
+            <span class="material-symbols-outlined header-icon">sync</span>
+          </div>
+          <p class="domain">canva.com</p>
+        </header>
+        <div class="rating-card">
+          <div class="rating-icon-wrap status-limits">
+            <span class="material-symbols-outlined">bolt</span>
+          </div>
+          <div class="rating-info">
+            <span class="rating-label">Free with limits</span>
+            <div class="rating-flags">
+              <span class="flag"><span class="material-symbols-outlined">verified</span>Verified</span>
+            </div>
+          </div>
+        </div>
+        <div>
+          <h3>Free alternatives</h3>
+          <ul class="alternatives-list">
+            <li>
+              <div class="alt-icon-wrap status-free"><span class="material-symbols-outlined">check_circle</span></div>
+              <span class="alt-name">OS / penpot.app</span>
+              <span class="alt-status label-free">Free</span>
+            </li>
+            <li>
+              <div class="alt-icon-wrap status-free"><span class="material-symbols-outlined">check_circle</span></div>
+              <span class="alt-name">OS / figma.com</span>
+              <span class="alt-status label-free">Free</span>
+            </li>
+          </ul>
+        </div>
+        <div>
+          <button class="newsletter-trigger">
+            <span class="material-symbols-outlined newsletter-icon">mail</span>
+            <span>Get weekly free tool picks</span>
+            <span class="material-symbols-outlined expand-icon">expand_more</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4: Paid + open source -->
+  <div class="preview-container">
+    <div class="scenario-label">Paid + open source</div>
+    <div class="browser-frame">
+      <div class="browser-titlebar">
+        <div class="browser-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+      </div>
+      <div class="browser-toolbar">
+        <div class="browser-url">gitlab.com</div>
+        <div class="toolbar-ext"><img class="ext-icon-img" src="extension/icons/paid48.png" alt="paid"></div>
+      </div>
+    </div>
+    <div class="popup-connector"><div class="popup-arrow"></div></div>
+    <div class="popup-frame">
+      <div class="app">
+        <header>
+          <div class="header-row">
+            <h1>JustFYI</h1>
+            <span class="material-symbols-outlined header-icon">sync</span>
+          </div>
+          <p class="domain">gitlab.com</p>
+        </header>
+        <div class="rating-card">
+          <div class="rating-icon-wrap status-paid">
+            <span class="material-symbols-outlined">attach_money</span>
+          </div>
+          <div class="rating-info">
+            <span class="rating-label">Paid</span>
+            <div class="rating-flags">
+              <span class="flag"><span class="material-symbols-outlined">code</span>Open source</span>
+              <span class="flag"><span class="material-symbols-outlined">verified</span>Verified</span>
+            </div>
+          </div>
+        </div>
+        <div>
+          <h3>Free alternatives</h3>
+          <ul class="alternatives-list">
+            <li>
+              <div class="alt-icon-wrap status-free"><span class="material-symbols-outlined">check_circle</span></div>
+              <span class="alt-name">OS / gitea.com</span>
+              <span class="alt-status label-free">Free</span>
+            </li>
+            <li>
+              <div class="alt-icon-wrap status-free"><span class="material-symbols-outlined">check_circle</span></div>
+              <span class="alt-name">OS / codeberg.org</span>
+              <span class="alt-status label-free">Free</span>
+            </li>
+          </ul>
+        </div>
+        <div>
+          <button class="newsletter-trigger">
+            <span class="material-symbols-outlined newsletter-icon">mail</span>
+            <span>Get weekly free tool picks</span>
+            <span class="material-symbols-outlined expand-icon">expand_more</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 5: All flags -->
+  <div class="preview-container">
+    <div class="scenario-label">All flags</div>
+    <div class="browser-frame">
+      <div class="browser-titlebar">
+        <div class="browser-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+      </div>
+      <div class="browser-toolbar">
+        <div class="browser-url">stirling-pdf.com</div>
+        <div class="toolbar-ext"><img class="ext-icon-img" src="extension/icons/free48.png" alt="free"></div>
+      </div>
+    </div>
+    <div class="popup-connector"><div class="popup-arrow"></div></div>
+    <div class="popup-frame">
+      <div class="app">
+        <header>
+          <div class="header-row">
+            <h1>JustFYI</h1>
+            <span class="material-symbols-outlined header-icon">sync</span>
+          </div>
+          <p class="domain">stirling-pdf.com</p>
+        </header>
+        <div class="rating-card">
+          <div class="rating-icon-wrap status-free">
+            <span class="material-symbols-outlined">check_circle</span>
+          </div>
+          <div class="rating-info">
+            <span class="rating-label">Free</span>
+            <div class="rating-flags">
+              <span class="flag"><span class="material-symbols-outlined">code</span>Open source</span>
+              <span class="flag"><span class="material-symbols-outlined">verified</span>Verified</span>
+              <span class="flag"><span class="material-symbols-outlined">thumb_up</span>Recommended</span>
+            </div>
+          </div>
+        </div>
+        <div>
+          <button class="newsletter-trigger">
+            <span class="material-symbols-outlined newsletter-icon">mail</span>
+            <span>Get weekly free tool picks</span>
+            <span class="material-symbols-outlined expand-icon">expand_more</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 6: Free with login -->
+  <div class="preview-container">
+    <div class="scenario-label">Free with login</div>
+    <div class="browser-frame">
+      <div class="browser-titlebar">
+        <div class="browser-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+      </div>
+      <div class="browser-toolbar">
+        <div class="browser-url">notion.so/workspace</div>
+        <div class="toolbar-ext"><img class="ext-icon-img" src="extension/icons/login48.png" alt="login"></div>
+      </div>
+    </div>
+    <div class="popup-connector"><div class="popup-arrow"></div></div>
+    <div class="popup-frame">
+      <div class="app">
+        <header>
+          <div class="header-row">
+            <h1>JustFYI</h1>
+            <span class="material-symbols-outlined header-icon">sync</span>
+          </div>
+          <p class="domain">notion.so</p>
+        </header>
+        <div class="rating-card">
+          <div class="rating-icon-wrap status-login">
+            <span class="material-symbols-outlined">lock</span>
+          </div>
+          <div class="rating-info">
+            <span class="rating-label">Free with login</span>
+            <div class="rating-flags">
+              <span class="flag"><span class="material-symbols-outlined">verified</span>Verified</span>
+            </div>
+          </div>
+        </div>
+        <div>
+          <h3>Free alternatives</h3>
+          <ul class="alternatives-list">
+            <li>
+              <div class="alt-icon-wrap status-free"><span class="material-symbols-outlined">check_circle</span></div>
+              <span class="alt-name">OS / logseq.com</span>
+              <span class="alt-status label-free">Free</span>
+            </li>
+            <li>
+              <div class="alt-icon-wrap status-free"><span class="material-symbols-outlined">check_circle</span></div>
+              <span class="alt-name">OS / obsidian.md</span>
+              <span class="alt-status label-free">Free</span>
+            </li>
+            <li>
+              <div class="alt-icon-wrap status-free"><span class="material-symbols-outlined">check_circle</span></div>
+              <span class="alt-name">OS / anytype.io</span>
+              <span class="alt-status label-free">Free</span>
+            </li>
+          </ul>
+        </div>
+        <div>
+          <button class="newsletter-trigger">
+            <span class="material-symbols-outlined newsletter-icon">mail</span>
+            <span>Get weekly free tool picks</span>
+            <span class="material-symbols-outlined expand-icon">expand_more</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 7: Login + open source -->
+  <div class="preview-container">
+    <div class="scenario-label">Login + open source</div>
+    <div class="browser-frame">
+      <div class="browser-titlebar">
+        <div class="browser-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+      </div>
+      <div class="browser-toolbar">
+        <div class="browser-url">excalidraw.com</div>
+        <div class="toolbar-ext"><img class="ext-icon-img" src="extension/icons/login48.png" alt="login"></div>
+      </div>
+    </div>
+    <div class="popup-connector"><div class="popup-arrow"></div></div>
+    <div class="popup-frame">
+      <div class="app">
+        <header>
+          <div class="header-row">
+            <h1>JustFYI</h1>
+            <span class="material-symbols-outlined header-icon">sync</span>
+          </div>
+          <p class="domain">excalidraw.com</p>
+        </header>
+        <div class="rating-card">
+          <div class="rating-icon-wrap status-login">
+            <span class="material-symbols-outlined">lock</span>
+          </div>
+          <div class="rating-info">
+            <span class="rating-label">Free with login</span>
+            <div class="rating-flags">
+              <span class="flag"><span class="material-symbols-outlined">code</span>Open source</span>
+              <span class="flag"><span class="material-symbols-outlined">thumb_up</span>Recommended</span>
+            </div>
+          </div>
+        </div>
+        <div>
+          <button class="newsletter-trigger">
+            <span class="material-symbols-outlined newsletter-icon">mail</span>
+            <span>Get weekly free tool picks</span>
+            <span class="material-symbols-outlined expand-icon">expand_more</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 8: Abandoned + open source -->
+  <div class="preview-container">
+    <div class="scenario-label">Abandoned + open source</div>
+    <div class="browser-frame">
+      <div class="browser-titlebar">
+        <div class="browser-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+      </div>
+      <div class="browser-toolbar">
+        <div class="browser-url">atom.io</div>
+        <div class="toolbar-ext"><img class="ext-icon-img" src="extension/icons/abandoned48.png" alt="abandoned"></div>
+      </div>
+    </div>
+    <div class="popup-connector"><div class="popup-arrow"></div></div>
+    <div class="popup-frame">
+      <div class="app">
+        <header>
+          <div class="header-row">
+            <h1>JustFYI</h1>
+            <span class="material-symbols-outlined header-icon">sync</span>
+          </div>
+          <p class="domain">atom.io</p>
+        </header>
+        <div class="rating-card">
+          <div class="rating-icon-wrap status-abandoned">
+            <span class="material-symbols-outlined">skull</span>
+          </div>
+          <div class="rating-info">
+            <span class="rating-label">Abandoned</span>
+            <div class="rating-flags">
+              <span class="flag"><span class="material-symbols-outlined">code</span>Open source</span>
+              <span class="flag"><span class="material-symbols-outlined">verified</span>Verified</span>
+            </div>
+          </div>
+        </div>
+        <div>
+          <h3>Free alternatives</h3>
+          <ul class="alternatives-list">
+            <li>
+              <div class="alt-icon-wrap status-free"><span class="material-symbols-outlined">check_circle</span></div>
+              <span class="alt-name">OS / vscodium.com</span>
+              <span class="alt-status label-free">Free</span>
+            </li>
+            <li>
+              <div class="alt-icon-wrap status-free"><span class="material-symbols-outlined">check_circle</span></div>
+              <span class="alt-name">OS / zed.dev</span>
+              <span class="alt-status label-free">Free</span>
+            </li>
+            <li>
+              <div class="alt-icon-wrap status-free"><span class="material-symbols-outlined">check_circle</span></div>
+              <span class="alt-name">OS / lapce.dev</span>
+              <span class="alt-status label-free">Free</span>
+            </li>
+          </ul>
+        </div>
+        <div>
+          <button class="newsletter-trigger">
+            <span class="material-symbols-outlined newsletter-icon">mail</span>
+            <span>Get weekly free tool picks</span>
+            <span class="material-symbols-outlined expand-icon">expand_more</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 9: Paid, many alternatives -->
+  <div class="preview-container">
+    <div class="scenario-label">Paid, many alternatives</div>
+    <div class="browser-frame">
+      <div class="browser-titlebar">
+        <div class="browser-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+      </div>
+      <div class="browser-toolbar">
+        <div class="browser-url">adobe.com/products/photoshop</div>
+        <div class="toolbar-ext"><img class="ext-icon-img" src="extension/icons/paid48.png" alt="paid"></div>
+      </div>
+    </div>
+    <div class="popup-connector"><div class="popup-arrow"></div></div>
+    <div class="popup-frame">
+      <div class="app">
+        <header>
+          <div class="header-row">
+            <h1>JustFYI</h1>
+            <span class="material-symbols-outlined header-icon">sync</span>
+          </div>
+          <p class="domain">adobe.com</p>
+        </header>
+        <div class="rating-card">
+          <div class="rating-icon-wrap status-paid">
+            <span class="material-symbols-outlined">attach_money</span>
+          </div>
+          <div class="rating-info">
+            <span class="rating-label">Paid</span>
+            <div class="rating-flags">
+              <span class="flag"><span class="material-symbols-outlined">verified</span>Verified</span>
+            </div>
+          </div>
+        </div>
+        <div>
+          <h3>Free alternatives</h3>
+          <ul class="alternatives-list">
+            <li>
+              <div class="alt-icon-wrap status-free"><span class="material-symbols-outlined">check_circle</span></div>
+              <span class="alt-name">OS / gimp.org</span>
+              <span class="alt-status label-free">Free</span>
+            </li>
+            <li>
+              <div class="alt-icon-wrap status-limits"><span class="material-symbols-outlined">bolt</span></div>
+              <span class="alt-name">OS / photopea.com</span>
+              <span class="alt-status label-limits">Free w/ limits</span>
+            </li>
+            <li>
+              <div class="alt-icon-wrap status-free"><span class="material-symbols-outlined">check_circle</span></div>
+              <span class="alt-name">OS / krita.org</span>
+              <span class="alt-status label-free">Free</span>
+            </li>
+            <li>
+              <div class="alt-icon-wrap status-limits"><span class="material-symbols-outlined">bolt</span></div>
+              <span class="alt-name">pixlr.com</span>
+              <span class="alt-status label-limits">Free w/ limits</span>
+            </li>
+          </ul>
+        </div>
+        <div>
+          <button class="newsletter-trigger">
+            <span class="material-symbols-outlined newsletter-icon">mail</span>
+            <span>Get weekly free tool picks</span>
+            <span class="material-symbols-outlined expand-icon">expand_more</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 10: Out of scope -->
+  <div class="preview-container">
+    <div class="scenario-label">Out of scope</div>
+    <div class="browser-frame">
+      <div class="browser-titlebar">
+        <div class="browser-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+      </div>
+      <div class="browser-toolbar">
+        <div class="browser-url">wikipedia.org</div>
+        <div class="toolbar-ext"><img class="ext-icon-img" src="extension/icons/default48.png" alt="default"></div>
+      </div>
+    </div>
+    <div class="popup-connector"><div class="popup-arrow"></div></div>
+    <div class="popup-frame">
+      <div class="app">
+        <header>
+          <div class="header-row">
+            <h1>JustFYI</h1>
+            <span class="material-symbols-outlined header-icon">sync</span>
+          </div>
+          <p class="domain">wikipedia.org</p>
+        </header>
+        <div class="empty-state">
+          <span class="material-symbols-outlined empty-icon">block</span>
+          <p>This site is not a tool or is out of scope.</p>
+        </div>
+        <div>
+          <button class="newsletter-trigger">
+            <span class="material-symbols-outlined newsletter-icon">mail</span>
+            <span>Get weekly free tool picks</span>
+            <span class="material-symbols-outlined expand-icon">expand_more</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 11: Unrated -- submission form -->
+  <div class="preview-container">
+    <div class="scenario-label">Unrated -- submission form</div>
+    <div class="browser-frame">
+      <div class="browser-titlebar">
+        <div class="browser-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+      </div>
+      <div class="browser-toolbar">
+        <div class="browser-url">sometool.io/convert</div>
+        <div class="toolbar-ext"><img class="ext-icon-img" src="extension/icons/unrated48.png" alt="unrated"></div>
+      </div>
+    </div>
+    <div class="popup-connector"><div class="popup-arrow"></div></div>
+    <div class="popup-frame">
+      <div class="app">
+        <header>
+          <div class="header-row">
+            <h1>JustFYI</h1>
+            <span class="material-symbols-outlined header-icon">sync</span>
+          </div>
+          <p class="domain">sometool.io</p>
+        </header>
+        <div class="submit-section">
+          <h3>Rate this tool</h3>
+          <form onsubmit="event.preventDefault()">
+            <label>Status</label>
+            <select>
+              <option>Free</option>
+              <option>Free with limits</option>
+              <option>Free with login</option>
+              <option selected>Paid</option>
+              <option>Abandoned</option>
+            </select>
+            <label>Category</label>
+            <select>
+              <option>-- Select --</option>
+              <option>PDF</option><option>Image</option><option>Video</option><option>Audio</option>
+              <option>AI Generate</option><option>Writing</option><option>Dev</option><option>Design</option>
+              <option selected>File Convert</option><option>Productivity</option><option>SEO</option><option>Security</option>
+            </select>
+            <label class="checkbox-label"><input type="checkbox"> <span>Open source</span></label>
+            <label>Notes (optional)</label>
+            <input type="text" placeholder="Any details..." value="Free trial then $9/mo">
+            <button type="submit" class="submit-btn">
+              <span class="material-symbols-outlined">send</span>
+              Submit Rating
+            </button>
+          </form>
+        </div>
+        <div>
+          <button class="newsletter-trigger">
+            <span class="material-symbols-outlined newsletter-icon">mail</span>
+            <span>Get weekly free tool picks</span>
+            <span class="material-symbols-outlined expand-icon">expand_more</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 12: After submission -- success -->
+  <div class="preview-container">
+    <div class="scenario-label">After submitting</div>
+    <div class="browser-frame">
+      <div class="browser-titlebar">
+        <div class="browser-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+      </div>
+      <div class="browser-toolbar">
+        <div class="browser-url">newtool.dev</div>
+        <div class="toolbar-ext"><img class="ext-icon-img" src="extension/icons/unrated48.png" alt="unrated"></div>
+      </div>
+    </div>
+    <div class="popup-connector"><div class="popup-arrow"></div></div>
+    <div class="popup-frame">
+      <div class="app">
+        <header>
+          <div class="header-row">
+            <h1>JustFYI</h1>
+            <span class="material-symbols-outlined header-icon">sync</span>
+          </div>
+          <p class="domain">newtool.dev</p>
+        </header>
+        <div class="submit-section">
+          <h3>Rate this tool</h3>
+          <form onsubmit="event.preventDefault()">
+            <label>Status</label>
+            <select><option selected>Free</option></select>
+            <label>Category</label>
+            <select><option selected>Dev</option></select>
+            <label class="checkbox-label"><input type="checkbox" checked> <span>Open source</span></label>
+            <label>Notes (optional)</label>
+            <input type="text" value="">
+            <button type="submit" class="submit-btn" disabled>
+              <span class="material-symbols-outlined">done</span>
+              Submitted
+            </button>
+          </form>
+          <div class="result-success">
+            <span class="material-symbols-outlined">check_circle</span>
+            Rating submitted! It will be reviewed shortly.
+          </div>
+        </div>
+        <div>
+          <button class="newsletter-trigger">
+            <span class="material-symbols-outlined newsletter-icon">mail</span>
+            <span>Get weekly free tool picks</span>
+            <span class="material-symbols-outlined expand-icon">expand_more</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 13: Newsletter expanded -->
+  <div class="preview-container">
+    <div class="scenario-label">Newsletter expanded</div>
+    <div class="browser-frame">
+      <div class="browser-titlebar">
+        <div class="browser-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+      </div>
+      <div class="browser-toolbar">
+        <div class="browser-url">penpot.app</div>
+        <div class="toolbar-ext"><img class="ext-icon-img" src="extension/icons/free48.png" alt="free"></div>
+      </div>
+    </div>
+    <div class="popup-connector"><div class="popup-arrow"></div></div>
+    <div class="popup-frame">
+      <div class="app">
+        <header>
+          <div class="header-row">
+            <h1>JustFYI</h1>
+            <span class="material-symbols-outlined header-icon">sync</span>
+          </div>
+          <p class="domain">penpot.app</p>
+        </header>
+        <div class="rating-card">
+          <div class="rating-icon-wrap status-free">
+            <span class="material-symbols-outlined">check_circle</span>
+          </div>
+          <div class="rating-info">
+            <span class="rating-label">Free</span>
+            <div class="rating-flags">
+              <span class="flag"><span class="material-symbols-outlined">code</span>Open source</span>
+              <span class="flag"><span class="material-symbols-outlined">verified</span>Verified</span>
+              <span class="flag"><span class="material-symbols-outlined">thumb_up</span>Recommended</span>
+            </div>
+          </div>
+        </div>
+        <div>
+          <button class="newsletter-trigger">
+            <span class="material-symbols-outlined newsletter-icon">mail</span>
+            <span>Get weekly free tool picks</span>
+            <span class="material-symbols-outlined expand-icon rotated">expand_more</span>
+          </button>
+          <div class="newsletter-form">
+            <input type="email" placeholder="you@email.com">
+            <button>Subscribe</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>

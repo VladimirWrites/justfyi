@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Privacy Policy — JustFYI</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg"/>
+  <link rel="icon" type="image/png" href="favicon.png"/>
+  <link rel="icon" type="image/x-icon" href="favicon.ico"/>
+  <meta name="description" content="JustFYI privacy policy — what we collect, why, and how to get it deleted.">
+  <meta name="color-scheme" content="light dark">
+  <meta name="robots" content="index,follow">
+  <script>
+    (function() {
+      try {
+        var saved = localStorage.getItem('theme');
+        if (saved === 'light' || saved === 'dark') {
+          document.documentElement.setAttribute('data-theme', saved);
+        }
+      } catch (e) {}
+    })();
+  </script>
+  <style>
+    @font-face {
+      font-family: 'Inter';
+      src: url('fonts/InterVariable.woff2') format('woff2');
+      font-weight: 100 900;
+      font-display: swap;
+    }
+
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --surface: #FFFBFE;
+      --surface-1: #F4EFFA;
+      --on-surface: #1C1B1F;
+      --on-surface-variant: #49454F;
+      --outline: #79747E;
+      --outline-variant: #CAC4D0;
+      --primary: #006C49;
+      --nav-bg: rgba(255, 251, 254, 0.85);
+    }
+
+    :root[data-theme="dark"] {
+      --surface: #141218;
+      --surface-1: #1D1B20;
+      --on-surface: #E6E0E9;
+      --on-surface-variant: #CAC4D0;
+      --outline: #938F99;
+      --outline-variant: #49454F;
+      --primary: #4FB486;
+      --nav-bg: rgba(20, 18, 24, 0.75);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme]) {
+        --surface: #141218;
+        --surface-1: #1D1B20;
+        --on-surface: #E6E0E9;
+        --on-surface-variant: #CAC4D0;
+        --outline: #938F99;
+        --outline-variant: #49454F;
+        --primary: #4FB486;
+        --nav-bg: rgba(20, 18, 24, 0.75);
+      }
+    }
+
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      color: var(--on-surface);
+      background: var(--surface);
+      -webkit-font-smoothing: antialiased;
+      line-height: 1.65;
+    }
+
+    a { color: var(--primary); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    nav {
+      position: sticky; top: 0; z-index: 100;
+      background: var(--nav-bg);
+      backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--outline-variant);
+      padding: 16px 0;
+    }
+    .nav-inner {
+      max-width: 760px; margin: 0 auto; padding: 0 24px;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .brand { font-size: 18px; font-weight: 800; color: var(--on-surface); }
+    .nav-right { display: flex; align-items: center; gap: 16px; }
+    .back { font-size: 14px; color: var(--on-surface-variant); }
+    .theme-toggle {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 32px; height: 32px; padding: 0;
+      background: transparent; border: 1px solid var(--outline-variant);
+      border-radius: 100px; color: var(--on-surface-variant); cursor: pointer;
+      transition: color 0.15s, background 0.15s, border-color 0.15s;
+    }
+    .theme-toggle:hover { color: var(--on-surface); background: var(--surface-1); border-color: var(--outline); }
+    .theme-icon { width: 16px; height: 16px; fill: currentColor; }
+    .theme-icon-sun { display: none; }
+    :root[data-theme="dark"] .theme-icon-sun { display: block; }
+    :root[data-theme="dark"] .theme-icon-moon { display: none; }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme]) .theme-icon-sun { display: block; }
+      :root:not([data-theme]) .theme-icon-moon { display: none; }
+    }
+
+    main {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 64px 24px 96px;
+    }
+
+    h1 {
+      font-size: 40px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      margin-bottom: 12px;
+    }
+    .subtitle {
+      font-size: 16px;
+      color: var(--on-surface-variant);
+      margin-bottom: 48px;
+    }
+    .updated {
+      font-size: 13px;
+      color: var(--outline);
+      margin-bottom: 48px;
+    }
+
+    h2 {
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      margin: 48px 0 16px;
+    }
+    h3 {
+      font-size: 15px;
+      font-weight: 700;
+      margin: 24px 0 8px;
+    }
+
+    p { margin-bottom: 16px; }
+    ul { padding-left: 20px; margin-bottom: 16px; }
+    li { margin-bottom: 8px; }
+
+    .tldr {
+      background: var(--surface-1);
+      border-left: 4px solid var(--primary);
+      padding: 20px 24px;
+      border-radius: 8px;
+      margin-bottom: 48px;
+    }
+    .tldr strong { font-weight: 700; }
+
+    footer {
+      border-top: 1px solid var(--outline-variant);
+      padding: 32px 24px;
+      text-align: center;
+      font-size: 13px;
+      color: var(--outline);
+    }
+  </style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="index.html" class="brand">JustFYI</a>
+    <div class="nav-right">
+      <a href="index.html" class="back">← Back to home</a>
+      <button id="theme-toggle" class="theme-toggle" aria-label="Toggle theme" type="button">
+        <svg class="theme-icon theme-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="4"/>
+          <line x1="12" y1="2" x2="12" y2="4"/>
+          <line x1="12" y1="20" x2="12" y2="22"/>
+          <line x1="2" y1="12" x2="4" y2="12"/>
+          <line x1="20" y1="12" x2="22" y2="12"/>
+          <line x1="4.93" y1="4.93" x2="6.34" y2="6.34"/>
+          <line x1="17.66" y1="17.66" x2="19.07" y2="19.07"/>
+          <line x1="4.93" y1="19.07" x2="6.34" y2="17.66"/>
+          <line x1="17.66" y1="6.34" x2="19.07" y2="4.93"/>
+        </svg>
+        <svg class="theme-icon theme-icon-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      </button>
+    </div>
+  </div>
+</nav>
+
+<main>
+  <h1>Privacy Policy</h1>
+  <p class="subtitle">Plain-English edition. No dark patterns, no hidden trackers.</p>
+  <p class="updated">Last updated: April 19, 2026</p>
+
+  <div class="tldr">
+    <p><strong>Short version:</strong> The extension never phones home while you browse. We only receive data when you actively submit a tool rating or sign up for the newsletter. We don't use cookies, don't run analytics, and don't sell anything to anyone. You can delete your data anytime by emailing <a href="mailto:privacy@justfyi.app">privacy@justfyi.app</a>.</p>
+  </div>
+
+  <h2>Who we are</h2>
+  <p>JustFYI is an open-source browser extension and the small web service that supports it. For the purposes of GDPR, JustFYI is the data controller for the limited data described below. You can reach us at <a href="mailto:privacy@justfyi.app">privacy@justfyi.app</a>.</p>
+
+  <h2>What we collect, and why</h2>
+
+  <h3>While you browse — nothing</h3>
+  <p>The extension does all its lookups locally, against a ratings database that ships inside the extension itself. Your browsing history, URLs, page content, and clicks never leave your device. We don't know which sites you visit or when.</p>
+
+  <h3>When you submit a rating</h3>
+  <p>When you click "Submit rating" in the popup, we receive the data you filled in on the form:</p>
+  <ul>
+    <li>the domain being rated,</li>
+    <li>the status (free / free-with-limits / paid / out-of-scope),</li>
+    <li>the category, the open-source / login-required / abandoned flags,</li>
+    <li>an optional short note you wrote yourself.</li>
+  </ul>
+  <p>We do <strong>not</strong> store your IP address or browser user-agent alongside the submission. To stop abuse, your IP is briefly logged in a separate rate-limiting table. Each incoming request first deletes any rows older than an hour, then inserts a fresh row for the current request — so your IP is never retained longer than about an hour, and any traffic at all on the endpoint keeps clearing out expired entries.</p>
+  <p><strong>Legal basis:</strong> legitimate interest in operating the service (GDPR Art. 6(1)(f)).</p>
+
+  <h3>When you subscribe to the newsletter</h3>
+  <p>If you sign up for the weekly picks, we store only your email address and the date you subscribed — no name, no user-agent. As with rating submissions, your IP is briefly logged in the same short-lived rate-limiting table (deleted on each incoming request, never retained longer than about an hour) purely to stop abuse. We use your email solely to send you the newsletter you asked for. You can unsubscribe anytime from any email we send, or by emailing us.</p>
+  <p><strong>Legal basis:</strong> your consent (GDPR Art. 6(1)(a)) for the email address; legitimate interest (GDPR Art. 6(1)(f)) for the brief rate-limit IP log. You can withdraw consent at any time.</p>
+
+  <h2>What we don't do</h2>
+  <ul>
+    <li><strong>No cookies on this website.</strong> The landing page sets no cookies and uses no local storage for tracking.</li>
+    <li><strong>No third-party analytics.</strong> No Google Analytics, no Plausible, no Fathom, no tracking pixels, no fingerprinting.</li>
+    <li><strong>No advertising.</strong> We don't show ads and we don't share data with ad networks.</li>
+    <li><strong>No data sales.</strong> We don't sell, rent, or trade your data.</li>
+  </ul>
+
+  <h2>Where your data lives</h2>
+  <p>We use <strong>Cloudflare</strong> (Workers, D1, and static hosting) as our infrastructure provider. Cloudflare acts as our data processor under a Data Processing Agreement and is contractually bound to protect your data. Cloudflare may process requests from globally distributed edge locations; for EU data subjects, Cloudflare relies on Standard Contractual Clauses for any transfers outside the EEA.</p>
+  <p>When we start sending the newsletter, we'll use a reputable email-delivery service (also under a DPA) and update this page to name them. Until that happens, your email sits in our Cloudflare D1 database and nothing more.</p>
+
+  <h2>How long we keep things</h2>
+  <ul>
+    <li><strong>Rating submissions:</strong> kept indefinitely once approved, because they become part of the public ratings database. Rejected submissions are kept in our admin log for audit. You can ask us to delete a submission you made — email us.</li>
+    <li><strong>Newsletter email:</strong> kept until you unsubscribe or ask us to delete it.</li>
+    <li><strong>Rate-limit IP log:</strong> purged on every write; in practice, nothing older than ~1 hour remains.</li>
+  </ul>
+
+  <h2>Your rights</h2>
+  <p>Under GDPR and similar laws, you have the right to:</p>
+  <ul>
+    <li>know what data we hold about you and get a copy of it,</li>
+    <li>correct anything that's wrong,</li>
+    <li>have your data deleted,</li>
+    <li>object to or restrict our processing,</li>
+    <li>withdraw consent for the newsletter,</li>
+    <li>lodge a complaint with your local data-protection authority.</li>
+  </ul>
+  <p>To exercise any of these rights, email <a href="mailto:privacy@justfyi.app">privacy@justfyi.app</a>. We'll respond within 30 days, usually much sooner.</p>
+
+  <h2>Children</h2>
+  <p>JustFYI is not directed at children under 16, and we don't knowingly collect data from them. If you believe a child has provided us data, contact us and we'll delete it.</p>
+
+  <h2>Open source</h2>
+  <p>The extension, the worker, and this landing page are all open source. You can read the exact code that collects and stores anything mentioned here in our <a href="https://github.com/VladimirWrites/justfyi">GitHub repository</a>. If something in the code doesn't match this policy, the code is the bug — tell us.</p>
+
+  <h2>Changes to this policy</h2>
+  <p>If we change how we handle data in a material way, we'll update this page and bump the "last updated" date at the top. For significant changes affecting existing newsletter subscribers, we'll also send you an email.</p>
+
+  <h2>Contact</h2>
+  <p>Privacy questions, data-deletion requests, or anything else related to this policy:<br><a href="mailto:privacy@justfyi.app">privacy@justfyi.app</a></p>
+</main>
+
+<footer>
+  Just FYI. No tracking. No nonsense.
+</footer>
+
+<script>
+(function() {
+  const btn = document.getElementById('theme-toggle');
+  if (!btn) return;
+  btn.addEventListener('click', () => {
+    const current = document.documentElement.getAttribute('data-theme');
+    const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const effective = current || (systemDark ? 'dark' : 'light');
+    const next = effective === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    try { localStorage.setItem('theme', next); } catch (e) {}
+  });
+})();
+</script>
+</body>
+</html>
