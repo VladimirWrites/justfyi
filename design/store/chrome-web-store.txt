@@ -1,0 +1,69 @@
+=============================================================
+Chrome Web Store Listing — JustFYI
+=============================================================
+
+
+CATEGORY
+--------
+Tools
+
+(Privacy & Security is a valid alternative if we want to lead
+with the no-tracking angle, but Tools matches what people
+actually search for.)
+
+
+SHORT DESCRIPTION  (Chrome limit: 132 characters)
+-------------------------------------------------
+Before you upload, know if that "free" tool is actually free, freemium, paid, or abandoned — with genuinely free alternatives.
+
+(126 chars)
+
+
+DETAILED DESCRIPTION
+--------------------
+You searched "free PDF merge". You clicked the top result. It looks legit — then it paywalls you after you upload your file, or cements a watermark onto your work, or turns out to have been abandoned three years ago.
+
+JustFYI tells you before you upload. The toolbar icon changes based on the site you're on:
+
+• Free — no catches, no paywall
+• Free with limits — works, but expect caps or friction
+• Paid — will charge you
+• Abandoned — project is dead, move on
+• Unrated — not in the database yet (help us rate it!)
+
+When you hit a paywalled or limited tool, the popup suggests genuinely free alternatives in the same category.
+
+Everything runs locally:
+• No tracking. No analytics. No telemetry. No ad networks.
+• The ratings database ships inside the extension. It never sends your browsing history, URLs, or page content anywhere.
+• Open source. The database is public. The code is auditable.
+
+You can submit a rating from the popup if you spot a tool that's missing, miscategorized, or has changed its pricing.
+
+Source: https://github.com/VladimirWrites/justfyi
+Privacy: https://justfyi.app/privacy.html
+
+
+SINGLE PURPOSE
+--------------
+JustFYI shows a verdict on the website you are currently visiting — free, free-with-limits, paid, abandoned, or unrated — and, when the site is not genuinely free, lists pre-curated free alternatives in the same category. That is the only thing the extension does.
+
+
+PERMISSION JUSTIFICATIONS
+-------------------------
+
+storage
+  We use chrome.storage.local to cache the bundled ratings database
+  after install/update. Loading the JSON once and keeping a domain →
+  rating map in storage lets every tab change do an O(1) lookup
+  without re-reading the file from disk. No user data is written to
+  storage — only the static ratings database and a bookkeeping key
+  that records which version of the bundle has been loaded.
+
+tabs
+  We read the active tab's URL (chrome.tabs.onActivated /
+  chrome.tabs.onUpdated and chrome.tabs.query in the popup) so we can
+  (1) normalise the current domain and look it up in the cached
+  ratings map, (2) update the toolbar icon to reflect that rating, and
+  (3) show the corresponding verdict in the popup. We do not read tab
+  content, inject scripts, or send any URL off-device.

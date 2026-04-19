@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Screenshot — Free</title>
+<link rel="stylesheet" href="_frame.css">
+<style>
+  html, body, .stage { width: 1280px; height: 800px; }
+  .headline { top: 72px; }
+  .popup-wrap {
+    position: absolute; left: 50%; top: 165px;
+    transform: translateX(-50%);
+    width: 680px; height: 644px;
+    border-radius: 28px;
+    overflow: hidden;
+  }
+  .popup-wrap iframe {
+    width: 800px; height: 758px;
+    transform: scale(0.85); transform-origin: top left;
+    border: 0; background: transparent;
+  }
+</style>
+</head>
+<body>
+  <div class="stage">
+    <div class="headline">
+      <h1>Verified <em>genuinely free</em></h1>
+      <p>Green means free — no paywall, no login, no usage caps.</p>
+    </div>
+    <div class="popup-wrap popup-frame">
+      <iframe src="../../popup-free.html" scrolling="no"></iframe>
+    </div>
+  </div>
+</body>
+</html>

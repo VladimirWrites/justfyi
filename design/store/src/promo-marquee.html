@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Marquee promo tile — 1400×560</title>
+<link rel="stylesheet" href="_frame.css">
+<style>
+  html, body, .stage { width: 1400px; height: 560px; }
+  .stage {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 14px;
+  }
+  .logo {
+    width: 104px; height: 104px;
+    filter: drop-shadow(0 14px 28px rgba(0, 108, 73, 0.28));
+  }
+  h1 {
+    font-size: 84px; font-weight: 800; letter-spacing: -0.04em; color: var(--on-surface);
+    line-height: 1;
+  }
+  .tagline {
+    font-size: 28px; color: var(--on-surface-variant); font-weight: 500;
+    max-width: 1000px; text-align: center; letter-spacing: -0.01em;
+  }
+  .tagline em {
+    font-style: normal; font-weight: 700;
+    background: linear-gradient(120deg, var(--primary) 0%, var(--primary-2) 100%);
+    -webkit-background-clip: text; background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .status-row {
+    margin-top: 10px;
+    display: flex; gap: 24px; align-items: center; justify-content: center;
+  }
+  .status-row img {
+    width: 64px; height: 64px;
+    filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.08));
+  }
+</style>
+</head>
+<body>
+  <div class="stage">
+    <img class="logo" src="../../icons/brand.svg" alt="JustFYI">
+    <h1>JustFYI</h1>
+    <div class="tagline">Before you upload, know if that "free" tool is <em>actually free</em>.</div>
+    <div class="status-row">
+      <img src="../../../extension/icons/free128.png" alt="Free">
+      <img src="../../../extension/icons/limits128.png" alt="Free with limits">
+      <img src="../../../extension/icons/paid128.png" alt="Paid">
+      <img src="../../../extension/icons/abandoned128.png" alt="Abandoned">
+      <img src="../../../extension/icons/unrated128.png" alt="Unrated">
+    </div>
+  </div>
+</body>
+</html>

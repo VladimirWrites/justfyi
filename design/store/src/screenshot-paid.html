@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Screenshot — Paid</title>
+<link rel="stylesheet" href="_frame.css">
+<style>
+  html, body, .stage { width: 1280px; height: 800px; }
+  .headline { top: 72px; }
+  /* Iframe native size is 800×758; scaled so the popup card reads well
+     alongside the headline. */
+  .popup-wrap {
+    position: absolute; left: 50%; top: 165px;
+    transform: translateX(-50%);
+    width: 680px; height: 644px;
+    border-radius: 28px;
+    overflow: hidden;
+  }
+  .popup-wrap iframe {
+    width: 800px; height: 758px;
+    transform: scale(0.85); transform-origin: top left;
+    border: 0; background: transparent;
+  }
+</style>
+</head>
+<body>
+  <div class="stage">
+    <div class="headline">
+      <h1>The <em>"free"</em> tool that isn't</h1>
+      <p>JustFYI flags paywalled tools and points you at genuinely free alternatives.</p>
+    </div>
+    <div class="popup-wrap popup-frame">
+      <iframe src="../../popup-paid.html" scrolling="no"></iframe>
+    </div>
+  </div>
+</body>
+</html>
