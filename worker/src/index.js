@@ -60,23 +60,31 @@ function jsonResponse(data, status = 200) {
 
 // IP-based rate limit backed by the rate_limits table. Each call opportunistically
 // purges rows older than RATE_LIMIT_WINDOW_S, so IPs never linger as PII.
-// Returns true if the request should be blocked.
+
+// Check-and-record: returns true if over limit, otherwise records a new row.
+// Used by /submitRating and /subscribe where every successful request counts.
 async function isRateLimited(env, ip) {
+  if (await checkRateLimit(env, ip)) return true;
+  await recordRateLimit(env, ip);
+  return false;
+}
+
+// Just check without recording. Used by /admin/login so successful logins
+// don't consume slots — only failed attempts are recorded.
+async function checkRateLimit(env, ip) {
   await env.DB.prepare(
     "DELETE FROM rate_limits WHERE created_at < datetime('now', ?)"
   ).bind(`-${RATE_LIMIT_WINDOW_S} seconds`).run();
-
   const { results } = await env.DB.prepare(
     "SELECT COUNT(*) as cnt FROM rate_limits WHERE ip = ?"
   ).bind(ip).all();
+  return results[0].cnt >= RATE_LIMIT_MAX;
+}
 
-  if (results[0].cnt >= RATE_LIMIT_MAX) return true;
-
+async function recordRateLimit(env, ip) {
   await env.DB.prepare(
     "INSERT INTO rate_limits (ip, created_at) VALUES (?, datetime('now'))"
   ).bind(ip).run();
-
-  return false;
 }
 
 function htmlResponse(html, status = 200) {
@@ -86,24 +94,151 @@ function htmlResponse(html, status = 200) {
   });
 }
 
-// ─── Admin auth gate ───
-// Accept a request as authenticated if EITHER:
-//   1. Cloudflare Access has forwarded an authenticated user (the
-//      cf-access-authenticated-user-email header is injected by Access
-//      and cannot be spoofed from outside the zero-trust perimeter), OR
-//   2. The request carries an Authorization: Bearer <ADMIN_TOKEN> header
-//      matching the ADMIN_TOKEN secret set via `wrangler secret put`.
-// Anything else gets a flat 404 so /admin looks like it doesn't exist.
-function isAdmin(request, env) {
-  if (request.headers.get("cf-access-authenticated-user-email")) return true;
-  const token = env.ADMIN_TOKEN;
-  if (!token) return false;
-  const auth = request.headers.get("authorization") || "";
-  return auth === `Bearer ${token}`;
+// ─── Admin auth ───
+// Credentials live in two worker secrets: ADMIN_EMAIL and ADMIN_PASSWORD.
+// Access is granted only through the login form (POST /admin/login) that
+// sets a stateless session cookie. The cookie value is
+//    <expiryMs>.<hexHmacSha256(ADMIN_PASSWORD, expiryMs + ":" + ADMIN_EMAIL)>
+// which means we do not store sessions server-side and the cookie cannot
+// be forged without the password.
+const SESSION_COOKIE = "admin_session";
+const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+function readCookie(request, name) {
+  const header = request.headers.get("cookie") || "";
+  for (const part of header.split(/;\s*/)) {
+    const eq = part.indexOf("=");
+    if (eq > 0 && part.slice(0, eq) === name) return part.slice(eq + 1);
+  }
+  return null;
+}
+
+async function hmacHex(key, msg) {
+  const cryptoKey = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(key),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const sig = await crypto.subtle.sign("HMAC", cryptoKey, new TextEncoder().encode(msg));
+  return Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+async function signSession(env, expiryMs) {
+  const sig = await hmacHex(env.ADMIN_PASSWORD, `${expiryMs}:${env.ADMIN_EMAIL}`);
+  return `${expiryMs}.${sig}`;
+}
+
+function timingSafeEqual(a, b) {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+async function isAdmin(request, env) {
+  if (!env.ADMIN_EMAIL || !env.ADMIN_PASSWORD) return false;
+  const cookie = readCookie(request, SESSION_COOKIE);
+  if (!cookie) return false;
+  const dot = cookie.indexOf(".");
+  if (dot <= 0) return false;
+  const exp = Number(cookie.slice(0, dot));
+  if (!Number.isFinite(exp) || exp < Date.now()) return false;
+  const expected = await signSession(env, exp);
+  return timingSafeEqual(expected, cookie);
+}
+
+async function handleAdminLogin(request, env) {
+  const ip = request.headers.get("cf-connecting-ip") || "unknown";
+  if (await checkRateLimit(env, ip)) {
+    return htmlResponse(renderLoginHTML("Too many failed attempts. Try again in an hour."), 429);
+  }
+  const form = await request.formData().catch(() => null);
+  const email = (form && form.get("email") || "").toString().trim().toLowerCase();
+  const password = (form && form.get("password") || "").toString();
+  const goodEmail = env.ADMIN_EMAIL && timingSafeEqual(email, env.ADMIN_EMAIL.toLowerCase());
+  const goodPass = env.ADMIN_PASSWORD && timingSafeEqual(password, env.ADMIN_PASSWORD);
+  if (!goodEmail || !goodPass) {
+    // Only record a rate-limit row when the attempt is wrong so a
+    // legitimate user logging in (or out and back in) doesn't burn slots.
+    await recordRateLimit(env, ip);
+    return htmlResponse(renderLoginHTML("Wrong email or password."), 401);
+  }
+  const expiry = Date.now() + SESSION_TTL_MS;
+  const token = await signSession(env, expiry);
+  return new Response(null, {
+    status: 302,
+    headers: {
+      "Location": "/admin",
+      "Set-Cookie": `${SESSION_COOKIE}=${token}; Path=/admin; Secure; HttpOnly; SameSite=Strict; Max-Age=${Math.floor(SESSION_TTL_MS/1000)}`,
+    },
+  });
 }
 
 function notFound() {
   return jsonResponse({ error: "Not found" }, 404);
+}
+
+function renderLoginHTML(error) {
+  const errHtml = error
+    ? `<div class="err">${error.replace(/[<>&]/g, c => ({ "<":"&lt;", ">":"&gt;", "&":"&amp;" }[c]))}</div>`
+    : "";
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>JustFYI Admin — Sign in</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, system-ui, sans-serif;
+    background: #FAFAFA;
+    min-height: 100vh;
+    display: flex; align-items: center; justify-content: center;
+    color: #1C1B1F;
+  }
+  .card {
+    width: 360px; max-width: 90vw;
+    background: #fff; border: 1px solid #E0E0E0; border-radius: 16px;
+    padding: 32px; box-shadow: 0 4px 16px rgba(0,0,0,0.06);
+  }
+  h1 { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
+  .sub { font-size: 13px; color: #666; margin-bottom: 20px; }
+  label { display: block; font-size: 12px; font-weight: 600; color: #444; margin: 14px 0 6px; }
+  input {
+    width: 100%; font: inherit; font-size: 14px;
+    padding: 10px 12px; border: 1px solid #D0D0D0; border-radius: 8px;
+    background: #fff; color: #1C1B1F;
+  }
+  input:focus { outline: none; border-color: #006C49; box-shadow: 0 0 0 3px rgba(0,108,73,0.15); }
+  button {
+    margin-top: 20px; width: 100%;
+    padding: 11px; border: none; border-radius: 100px; cursor: pointer;
+    background: #006C49; color: #fff; font: inherit; font-size: 14px; font-weight: 600;
+  }
+  button:hover { background: #005A3C; }
+  .err {
+    font-size: 13px; color: #9F403D;
+    background: rgba(159,64,61,0.08); padding: 10px 12px; border-radius: 8px;
+    margin-bottom: 16px;
+  }
+</style>
+</head>
+<body>
+<form class="card" method="POST" action="/admin/login" autocomplete="off">
+  <h1>JustFYI Admin</h1>
+  <div class="sub">Sign in to review submissions.</div>
+  ${errHtml}
+  <label for="email">Email</label>
+  <input type="email" id="email" name="email" required autocomplete="username">
+  <label for="password">Password</label>
+  <input type="password" id="password" name="password" required autocomplete="current-password">
+  <button type="submit">Sign in</button>
+</form>
+</body>
+</html>`;
 }
 
 // ─── Router ───
@@ -120,10 +255,28 @@ export default {
     if (path === "/submitRating" && request.method === "POST") return handleSubmitRating(request, env);
     if (path === "/subscribe" && request.method === "POST") return handleSubscribe(request, env);
 
-    // Admin — gated by Cloudflare Access or ADMIN_TOKEN bearer. Anything
-    // without valid auth sees a 404 instead of a real response.
+    // Admin — gated by session cookie set via the login form.
     if (path === "/admin" || path.startsWith("/admin/")) {
-      if (!isAdmin(request, env)) return notFound();
+      if (path === "/admin/login" && request.method === "POST") {
+        return handleAdminLogin(request, env);
+      }
+      if (path === "/admin/logout" && request.method === "POST") {
+        return new Response(null, {
+          status: 302,
+          headers: {
+            "Location": "/admin",
+            "Set-Cookie": `${SESSION_COOKIE}=; Path=/admin; Secure; HttpOnly; SameSite=Strict; Max-Age=0`,
+          },
+        });
+      }
+      // Unauthenticated GET /admin shows the login page. Everything
+      // else under /admin/* stays invisible (404) until auth'd.
+      if (!(await isAdmin(request, env))) {
+        if (path === "/admin" && request.method === "GET") {
+          return htmlResponse(renderLoginHTML(null));
+        }
+        return notFound();
+      }
       if (path === "/admin" && request.method === "GET") return handleAdminPage(url, env);
       if (path.startsWith("/admin/approve/") && request.method === "POST") return handleApprove(path, request, env);
       if (path.startsWith("/admin/reject/") && request.method === "POST") return handleReject(path, env);
@@ -312,6 +465,9 @@ function renderAdminHTML(pending, reviewed, activeTab) {
   <h1>JustFYI Admin</h1>
   <div class="stats">
     <span><strong>${pending.length}</strong> pending</span>
+    <form method="POST" action="/admin/logout" style="display:inline">
+      <button type="submit" style="background:transparent;border:1px solid #CAC4D0;padding:6px 14px;border-radius:100px;font-size:12px;font-weight:600;cursor:pointer;color:#49454F">Sign out</button>
+    </form>
   </div>
 </div>
 <div class="tabs">
