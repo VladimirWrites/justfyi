@@ -315,9 +315,11 @@ async function handleSubmitRating(request, env) {
   if (await isRateLimited(env, ip))
     return jsonResponse({ error: "Rate limit exceeded. Try again later." }, 429);
 
+  // Community submissions never set "recommended" or "name" — those are
+  // curation choices the admin makes after review.
   await env.DB.prepare(
-    `INSERT INTO submissions (domain, status, category, open_source, login, abandoned, note, submitted_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))`
+    `INSERT INTO submissions (domain, status, category, open_source, login, abandoned, recommended, name, note, submitted_at)
+     VALUES (?, ?, ?, ?, ?, ?, 0, NULL, ?, datetime('now'))`
   ).bind(
     normalizeUrl(domain), status,
     status === 0 ? 0 : category,
@@ -338,10 +340,34 @@ async function handleAdminPage(url, env) {
 
   const [pending, recent] = await Promise.all([
     env.DB.prepare("SELECT * FROM submissions WHERE review = ? ORDER BY submitted_at DESC").bind(REVIEW.PENDING).all(),
-    env.DB.prepare("SELECT * FROM submissions WHERE review != ? ORDER BY submitted_at DESC LIMIT 50").bind(REVIEW.PENDING).all(),
+    // No LIMIT — approved rows are the full catalog, the admin needs to see all of them.
+    env.DB.prepare("SELECT * FROM submissions WHERE review != ? ORDER BY review ASC, category ASC, domain ASC").bind(REVIEW.PENDING).all(),
   ]);
 
-  return htmlResponse(renderAdminHTML(pending.results, recent.results, tab));
+  // Attach the latest approved row for each pending submission so the
+  // reviewer can see what's actually changing. One query fetches the
+  // most recent approved row per distinct domain across all pending.
+  const pendingDomains = pending.results.map(s => s.domain);
+  let currentByDomain = new Map();
+  if (pendingDomains.length) {
+    const placeholders = pendingDomains.map(() => "?").join(",");
+    const { results: approvedRows } = await env.DB.prepare(
+      `SELECT s.* FROM submissions s
+       JOIN (
+         SELECT domain, MAX(id) AS max_id
+         FROM submissions
+         WHERE review = 'approved' AND domain IN (${placeholders})
+         GROUP BY domain
+       ) latest ON s.id = latest.max_id`
+    ).bind(...pendingDomains).all();
+    currentByDomain = new Map(approvedRows.map(r => [r.domain, r]));
+  }
+  const pendingWithCurrent = pending.results.map(s => ({
+    ...s,
+    current: currentByDomain.get(s.domain) || null,
+  }));
+
+  return htmlResponse(renderAdminHTML(pendingWithCurrent, recent.results, tab));
 }
 
 // ═══════════════════════════════════════════
@@ -391,9 +417,20 @@ async function handleApprove(path, request, env) {
   const finalOs = openSource !== undefined ? (openSource ? 1 : 0) : sub.open_source;
   const finalLogin = body.login !== undefined ? (body.login ? 1 : 0) : sub.login;
   const finalAbandoned = body.abandoned !== undefined ? (body.abandoned ? 1 : 0) : sub.abandoned;
+  // Curation fields: carry over whatever was on the row by default.
+  // The admin can override by passing `name` (string, or empty to clear)
+  // and `recommended` (bool) in the approve payload.
+  const finalName = body.name !== undefined
+    ? (typeof body.name === "string" && body.name.trim() ? body.name.trim() : null)
+    : sub.name;
+  const finalRec = body.recommended !== undefined ? (body.recommended ? 1 : 0) : sub.recommended;
 
-  await env.DB.prepare("UPDATE submissions SET review = ?, status = ?, category = ?, open_source = ?, login = ?, abandoned = ? WHERE id = ?")
-    .bind(REVIEW.APPROVED, finalStatus, finalCat, finalOs, finalLogin, finalAbandoned, id).run();
+  await env.DB.prepare(
+    `UPDATE submissions
+       SET review = ?, status = ?, category = ?, open_source = ?,
+           login = ?, abandoned = ?, recommended = ?, name = ?
+     WHERE id = ?`
+  ).bind(REVIEW.APPROVED, finalStatus, finalCat, finalOs, finalLogin, finalAbandoned, finalRec, finalName, id).run();
 
   return jsonResponse({ success: true });
 }
@@ -416,16 +453,67 @@ function renderAdminHTML(pending, reviewed, activeTab) {
     return `<span style="background:${colors[s] || "#666"};color:#fff;padding:2px 8px;border-radius:100px;font-size:11px;font-weight:600">${STATUS_LABELS[s] || s}</span>`;
   }
 
+  // Mini diff line: for a pending submission whose domain already has an
+  // approved row, render a second row under it showing the current
+  // values. Any field that differs is highlighted.
+  function renderCurrentDiff(sub) {
+    if (!sub.current) {
+      return `<tr><td colspan="7" style="padding:4px 14px 10px 30px;font-size:12px;color:#9AA0A6;background:#FAFBFD">
+        <em>Not in catalog yet — this would be a new entry.</em>
+      </td></tr>`;
+    }
+    const cur = sub.current;
+    const mark = (changed, text) =>
+      changed
+        ? `<span style="background:#FFF3BF;padding:1px 6px;border-radius:4px;font-weight:600">${text}</span>`
+        : text;
+
+    const parts = [
+      mark(cur.status !== sub.status, `status ${STATUS_LABELS[cur.status] || cur.status}`),
+      mark(cur.category !== sub.category, `cat ${CATEGORY_LABELS[cur.category] || cur.category || "—"}`),
+      mark(cur.open_source !== sub.open_source, `OS:${cur.open_source ? "yes" : "no"}`),
+      mark(cur.login !== sub.login, `login:${cur.login ? "yes" : "no"}`),
+      mark(cur.abandoned !== sub.abandoned, `abandoned:${cur.abandoned ? "yes" : "no"}`),
+    ];
+    const name = cur.name ? `<strong>${cur.name}</strong> · ` : "";
+    const rec = cur.recommended ? ` · <span style="color:#006C49;font-weight:600">★ recommended</span>` : "";
+    return `<tr><td colspan="7" style="padding:4px 14px 10px 30px;font-size:12px;color:#5A6061;background:#FAFBFD">
+      currently: ${name}${parts.join(" · ")}${rec}
+    </td></tr>`;
+  }
+
+  const escAttr = s => String(s ?? "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
   function renderRow(sub, showActions) {
     const os = sub.open_source ? "Yes" : "No";
+    const btn = (label, onclick, bg) =>
+      `<button onclick="${onclick}" style="background:${bg};color:#fff;border:none;padding:6px 14px;border-radius:100px;font-size:12px;font-weight:600;cursor:pointer;margin-right:4px">${label}</button>`;
+
+    // Data attributes let the edit dialog read the row's current values
+    // (name, rec) without relying on global JS maps.
+    const openEditCall = (title) =>
+      `openEdit(this, '${escAttr(title)}')`;
+    const editAttrs =
+      `data-id="${sub.id}" data-name="${escAttr(sub.name || "")}" data-rec="${sub.recommended ? 1 : 0}"`;
+
     const actions = showActions ? `
       <td style="white-space:nowrap">
-        <button onclick="approve(${sub.id})" style="background:#006C49;color:#fff;border:none;padding:6px 14px;border-radius:100px;font-size:12px;font-weight:600;cursor:pointer;margin-right:4px">Approve</button>
-        <button onclick="reject(${sub.id})" style="background:#9F403D;color:#fff;border:none;padding:6px 14px;border-radius:100px;font-size:12px;font-weight:600;cursor:pointer">Reject</button>
-      </td>` : `<td><span style="padding:2px 8px;border-radius:100px;font-size:11px;font-weight:600;background:${sub.review === REVIEW.APPROVED ? '#E8F5E9' : '#FFEBEE'};color:${sub.review === REVIEW.APPROVED ? '#2E7D32' : '#C62828'}">${sub.review}</span></td>`;
+        ${btn("Approve", `approve(${sub.id})`, "#006C49")}
+        <button ${editAttrs} onclick="${openEditCall('Approve + edit')}" style="background:#005BC4;color:#fff;border:none;padding:6px 14px;border-radius:100px;font-size:12px;font-weight:600;cursor:pointer;margin-right:4px">Approve + edit</button>
+        ${btn("Reject", `reject(${sub.id})`, "#9F403D")}
+      </td>`
+      : `<td style="white-space:nowrap">
+          <span style="padding:2px 8px;border-radius:100px;font-size:11px;font-weight:600;background:${sub.review === REVIEW.APPROVED ? '#E8F5E9' : '#FFEBEE'};color:${sub.review === REVIEW.APPROVED ? '#2E7D32' : '#C62828'};margin-right:8px">${sub.review}</span>
+          ${sub.review === REVIEW.APPROVED
+            ? `<button ${editAttrs} onclick="${openEditCall('Edit entry')}" style="background:#005BC4;color:#fff;border:none;padding:6px 14px;border-radius:100px;font-size:12px;font-weight:600;cursor:pointer">Edit</button>`
+            : ""}
+        </td>`;
 
-    return `<tr>
-      <td style="font-weight:600">${sub.domain}</td>
+    const nameBit = sub.name ? `<strong>${sub.name}</strong> — ` : "";
+    const recBit = sub.recommended ? ' <span style="color:#006C49" title="Recommended">★</span>' : "";
+
+    const mainRow = `<tr>
+      <td>${nameBit}<span style="font-weight:500">${sub.domain}</span>${recBit}</td>
       <td>${statusBadge(sub.status)}</td>
       <td>${CATEGORY_LABELS[sub.category] || sub.category}</td>
       <td>${os}</td>
@@ -433,6 +521,9 @@ function renderAdminHTML(pending, reviewed, activeTab) {
       <td style="font-size:12px;color:#666">${sub.submitted_at}</td>
       ${actions}
     </tr>`;
+    // Diff row is only shown for pending submissions (showActions) where
+    // we actually fetched `current`. Reviewed rows skip it.
+    return showActions && "current" in sub ? mainRow + renderCurrentDiff(sub) : mainRow;
   }
 
   return `<!DOCTYPE html>
@@ -458,6 +549,50 @@ function renderAdminHTML(pending, reviewed, activeTab) {
   tr:last-child td { border-bottom: none; }
   .empty { text-align: center; padding: 48px; color: #999; font-size: 14px; }
   #toast { position: fixed; bottom: 24px; right: 24px; background: #1C1B1F; color: #fff; padding: 10px 20px; border-radius: 8px; font-size: 13px; display: none; z-index: 100; }
+
+  /* Edit dialog — native <dialog> default positioning varies by browser
+     so pin the centering explicitly. */
+  dialog#edit-dialog {
+    width: 420px; max-width: 90vw; border: none; border-radius: 16px;
+    padding: 0; box-shadow: 0 20px 50px rgba(0,0,0,0.18);
+    position: fixed;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    margin: 0;
+  }
+  dialog#edit-dialog::backdrop { background: rgba(0,0,0,0.4); }
+  dialog#edit-dialog form { padding: 24px; }
+  dialog#edit-dialog h3 {
+    font-size: 16px; font-weight: 700; margin-bottom: 4px;
+  }
+  dialog#edit-dialog .sub {
+    font-size: 12px; color: #666; margin-bottom: 20px;
+  }
+  dialog#edit-dialog label.field {
+    display: block; font-size: 12px; font-weight: 600; color: #444; margin: 14px 0 6px;
+  }
+  dialog#edit-dialog input[type=text] {
+    width: 100%; font: inherit; font-size: 14px;
+    padding: 10px 12px; border: 1px solid #D0D0D0; border-radius: 8px;
+    background: #fff; color: #1C1B1F;
+  }
+  dialog#edit-dialog input[type=text]:focus {
+    outline: none; border-color: #006C49; box-shadow: 0 0 0 3px rgba(0,108,73,0.15);
+  }
+  dialog#edit-dialog label.check {
+    display: flex; align-items: center; gap: 8px; font-size: 14px;
+    margin: 18px 0 4px; cursor: pointer;
+  }
+  dialog#edit-dialog .actions {
+    display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px;
+  }
+  dialog#edit-dialog button {
+    padding: 9px 18px; border-radius: 100px; font: inherit; font-size: 13px;
+    font-weight: 600; cursor: pointer;
+  }
+  dialog#edit-dialog .btn-cancel { background: #fff; border: 1px solid #CAC4D0; color: #49454F; }
+  dialog#edit-dialog .btn-save   { background: #006C49; border: none; color: #fff; }
+  dialog#edit-dialog .btn-save:hover { background: #005A3C; }
 </style>
 </head>
 <body>
@@ -490,6 +625,24 @@ ${activeTab === REVIEW.PENDING ? `
 `}
 </div>
 <div id="toast"></div>
+
+<dialog id="edit-dialog">
+  <form id="edit-form">
+    <h3 id="edit-title">Edit entry</h3>
+    <div class="sub" id="edit-domain"></div>
+    <label class="field" for="edit-name">Display name</label>
+    <input type="text" id="edit-name" placeholder="e.g. Notion (leave blank for none)">
+    <label class="check">
+      <input type="checkbox" id="edit-rec">
+      <span>Recommended ★</span>
+    </label>
+    <div class="actions">
+      <button type="button" class="btn-cancel" onclick="document.getElementById('edit-dialog').close()">Cancel</button>
+      <button type="submit" class="btn-save">Save</button>
+    </div>
+  </form>
+</dialog>
+
 <script>
 function toast(msg) {
   const el = document.getElementById('toast');
@@ -501,8 +654,44 @@ function toastAndReload(msg) {
   toast(msg);
   setTimeout(() => location.reload(), 500);
 }
+
+const editDialog = document.getElementById('edit-dialog');
+let editingId = null;
+let editingAction = null; // 'approve' or 'update'
+
+function openEdit(btn, title) {
+  editingId = btn.dataset.id;
+  editingAction = title.startsWith('Approve') ? 'approve' : 'update';
+  document.getElementById('edit-title').textContent = title;
+  // The row's domain sits in the first cell of the same tr. Show it so
+  // the dialog makes clear which row we're editing.
+  const domainCell = btn.closest('tr').querySelector('td');
+  document.getElementById('edit-domain').textContent = domainCell ? domainCell.innerText.trim() : '';
+  document.getElementById('edit-name').value = btn.dataset.name || '';
+  document.getElementById('edit-rec').checked = btn.dataset.rec === '1';
+  editDialog.showModal();
+  document.getElementById('edit-name').focus();
+}
+
+document.getElementById('edit-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const body = {
+    name: document.getElementById('edit-name').value.trim(),
+    recommended: document.getElementById('edit-rec').checked,
+  };
+  await fetch('/admin/approve/' + editingId, {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(body),
+  });
+  editDialog.close();
+  toastAndReload(editingAction === 'approve' ? 'Approved' : 'Updated');
+});
+
 async function approve(id) {
-  await fetch('/admin/approve/' + id, { method: 'POST', headers: {'Content-Type':'application/json'}, body: '{}' });
+  // Quick approve: no edits, keep whatever the submission already has.
+  await fetch('/admin/approve/' + id, {
+    method: 'POST', headers: {'Content-Type':'application/json'}, body: '{}',
+  });
   toastAndReload('Approved');
 }
 async function reject(id) {

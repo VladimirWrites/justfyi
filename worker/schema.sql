@@ -6,12 +6,15 @@ CREATE TABLE IF NOT EXISTS submissions (
   open_source INTEGER NOT NULL DEFAULT 0,
   login INTEGER NOT NULL DEFAULT 0,
   abandoned INTEGER NOT NULL DEFAULT 0,
+  recommended INTEGER NOT NULL DEFAULT 0,
+  name TEXT,
   note TEXT NOT NULL DEFAULT '',
   submitted_at TEXT NOT NULL,
   review TEXT NOT NULL DEFAULT 'pending'  -- pending, approved, rejected
 );
 
 CREATE INDEX IF NOT EXISTS idx_submissions_review ON submissions (review);
+CREATE INDEX IF NOT EXISTS idx_submissions_domain ON submissions (domain);
 
 CREATE TABLE IF NOT EXISTS subscribers (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
