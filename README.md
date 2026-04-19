@@ -2,7 +2,7 @@
 
 A browser extension that tells you — before you upload your file — whether an online tool is actually free, freemium, paid, or abandoned. When a tool is paywalled or limited, JustFYI suggests free and open source alternatives.
 
-Ratings are community-submitted and bundled with the extension as a local JSON file. No login required. No server contact while browsing.
+Ratings are hand-curated and bundled with the extension as a local JSON file. No login required. No server contact while browsing.
 
 Lives at [justfyi.app](https://justfyi.app). Source at [github.com/VladimirWrites/justfyi](https://github.com/VladimirWrites/justfyi).
 

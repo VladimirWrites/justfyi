@@ -1,7 +1,7 @@
 # JustFYI -- Claude Code Guidelines
 
 ## Project Overview
-Browser extension (justfyi.app) that tells users whether an online tool is actually free, freemium, paid, or abandoned — before they upload a file. Community-submitted ratings, bundled as local JSON. No login in extension.
+Browser extension (justfyi.app) that tells users whether an online tool is actually free, freemium, paid, or abandoned — before they upload a file. Hand-curated ratings, bundled as local JSON. No login in extension.
 
 ## Project Structure
 - `/extension/` -- Chrome extension (Manifest V3, vanilla JS)
