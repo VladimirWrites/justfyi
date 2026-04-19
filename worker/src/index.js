@@ -58,6 +58,37 @@ function jsonResponse(data, status = 200) {
   });
 }
 
+// ─── Input sanitisation ───
+// Strip control characters (including CR/LF for SMTP injection hygiene),
+// collapse internal whitespace, trim, and cap length. Returns empty string
+// for non-string input.
+function sanitizeText(v, maxLen) {
+  if (typeof v !== "string") return "";
+  // eslint-disable-next-line no-control-regex
+  let s = v.replace(/[\x00-\x1F\x7F]/g, " ");  // control chars → space
+  s = s.replace(/\s+/g, " ").trim();
+  if (s.length > maxLen) s = s.slice(0, maxLen);
+  return s;
+}
+
+// Escape text going into HTML text nodes or attributes so user-supplied
+// strings (notes, names, domains) can't break out of the document.
+function escHtml(v) {
+  return String(v ?? "").replace(/[&<>"']/g, c => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  }[c]));
+}
+
+// Stricter email shape check + length cap + no control chars.
+const EMAIL_RE = /^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$/;
+function parseEmail(v) {
+  if (typeof v !== "string") return null;
+  const s = v.replace(/[\x00-\x1F\x7F]/g, "").trim().toLowerCase();
+  if (s.length < 3 || s.length > 254) return null;
+  if (!EMAIL_RE.test(s)) return null;
+  return s;
+}
+
 // IP-based rate limit backed by the rate_limits table. Each call opportunistically
 // purges rows older than RATE_LIMIT_WINDOW_S, so IPs never linger as PII.
 
@@ -155,8 +186,12 @@ async function handleAdminLogin(request, env) {
     return htmlResponse(renderLoginHTML("Too many failed attempts. Try again in an hour."), 429);
   }
   const form = await request.formData().catch(() => null);
-  const email = (form && form.get("email") || "").toString().trim().toLowerCase();
-  const password = (form && form.get("password") || "").toString();
+  // Normalise login fields the same way submissions are cleaned so a
+  // stray newline, null byte, or 5 MB of junk can't reach the compare.
+  const rawEmail = form && form.get("email") ? String(form.get("email")) : "";
+  const email = rawEmail.replace(/[\x00-\x1F\x7F]/g, "").trim().toLowerCase().slice(0, 254);
+  const rawPw = form && form.get("password") ? String(form.get("password")) : "";
+  const password = rawPw.replace(/[\x00-\x1F\x7F]/g, "").slice(0, 256);
   const goodEmail = env.ADMIN_EMAIL && timingSafeEqual(email, env.ADMIN_EMAIL.toLowerCase());
   const goodPass = env.ADMIN_PASSWORD && timingSafeEqual(password, env.ADMIN_PASSWORD);
   if (!goodEmail || !goodPass) {
@@ -326,7 +361,7 @@ async function handleSubmitRating(request, env) {
     openSource ? 1 : 0,
     login ? 1 : 0,
     abandoned ? 1 : 0,
-    typeof note === "string" ? note.slice(0, 200) : ""
+    sanitizeText(note, 200)
   ).run();
 
   return jsonResponse({ success: true });
@@ -377,9 +412,8 @@ async function handleSubscribe(request, env) {
   let body;
   try { body = await request.json(); } catch { return jsonResponse({ error: "Invalid JSON body." }, 400); }
 
-  const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
-  // Minimal email shape check. We can't verify deliverability without sending.
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) {
+  const email = parseEmail(body.email);
+  if (!email) {
     return jsonResponse({ error: "Enter a valid email address." }, 400);
   }
 
@@ -420,9 +454,11 @@ async function handleApprove(path, request, env) {
   // Curation fields: carry over whatever was on the row by default.
   // The admin can override by passing `name` (string, or empty to clear)
   // and `recommended` (bool) in the approve payload.
-  const finalName = body.name !== undefined
-    ? (typeof body.name === "string" && body.name.trim() ? body.name.trim() : null)
-    : sub.name;
+  let finalName = sub.name;
+  if (body.name !== undefined) {
+    const cleaned = sanitizeText(body.name, 80);
+    finalName = cleaned.length ? cleaned : null;
+  }
   const finalRec = body.recommended !== undefined ? (body.recommended ? 1 : 0) : sub.recommended;
 
   await env.DB.prepare(
@@ -475,7 +511,7 @@ function renderAdminHTML(pending, reviewed, activeTab) {
       mark(cur.login !== sub.login, `login:${cur.login ? "yes" : "no"}`),
       mark(cur.abandoned !== sub.abandoned, `abandoned:${cur.abandoned ? "yes" : "no"}`),
     ];
-    const name = cur.name ? `<strong>${cur.name}</strong> · ` : "";
+    const name = cur.name ? `<strong>${escHtml(cur.name)}</strong> · ` : "";
     const rec = cur.recommended ? ` · <span style="color:#006C49;font-weight:600">★ recommended</span>` : "";
     return `<tr><td colspan="7" style="padding:4px 14px 10px 30px;font-size:12px;color:#5A6061;background:#FAFBFD">
       currently: ${name}${parts.join(" · ")}${rec}
@@ -509,15 +545,15 @@ function renderAdminHTML(pending, reviewed, activeTab) {
             : ""}
         </td>`;
 
-    const nameBit = sub.name ? `<strong>${sub.name}</strong> — ` : "";
+    const nameBit = sub.name ? `<strong>${escHtml(sub.name)}</strong> — ` : "";
     const recBit = sub.recommended ? ' <span style="color:#006C49" title="Recommended">★</span>' : "";
 
     const mainRow = `<tr>
-      <td>${nameBit}<span style="font-weight:500">${sub.domain}</span>${recBit}</td>
+      <td>${nameBit}<span style="font-weight:500">${escHtml(sub.domain)}</span>${recBit}</td>
       <td>${statusBadge(sub.status)}</td>
-      <td>${CATEGORY_LABELS[sub.category] || sub.category}</td>
+      <td>${CATEGORY_LABELS[sub.category] || escHtml(sub.category)}</td>
       <td>${os}</td>
-      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${sub.note || "-"}</td>
+      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${sub.note ? escHtml(sub.note) : "-"}</td>
       <td style="font-size:12px;color:#666">${sub.submitted_at}</td>
       ${actions}
     </tr>`;
