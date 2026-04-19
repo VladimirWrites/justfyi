@@ -86,6 +86,26 @@ function htmlResponse(html, status = 200) {
   });
 }
 
+// ─── Admin auth gate ───
+// Accept a request as authenticated if EITHER:
+//   1. Cloudflare Access has forwarded an authenticated user (the
+//      cf-access-authenticated-user-email header is injected by Access
+//      and cannot be spoofed from outside the zero-trust perimeter), OR
+//   2. The request carries an Authorization: Bearer <ADMIN_TOKEN> header
+//      matching the ADMIN_TOKEN secret set via `wrangler secret put`.
+// Anything else gets a flat 404 so /admin looks like it doesn't exist.
+function isAdmin(request, env) {
+  if (request.headers.get("cf-access-authenticated-user-email")) return true;
+  const token = env.ADMIN_TOKEN;
+  if (!token) return false;
+  const auth = request.headers.get("authorization") || "";
+  return auth === `Bearer ${token}`;
+}
+
+function notFound() {
+  return jsonResponse({ error: "Not found" }, 404);
+}
+
 // ─── Router ───
 export default {
   async fetch(request, env) {
@@ -100,10 +120,14 @@ export default {
     if (path === "/submitRating" && request.method === "POST") return handleSubmitRating(request, env);
     if (path === "/subscribe" && request.method === "POST") return handleSubscribe(request, env);
 
-    // Admin (Cloudflare Access protects /admin*)
-    if (path === "/admin" && request.method === "GET") return handleAdminPage(url, env);
-    if (path.startsWith("/admin/approve/") && request.method === "POST") return handleApprove(path, request, env);
-    if (path.startsWith("/admin/reject/") && request.method === "POST") return handleReject(path, env);
+    // Admin — gated by Cloudflare Access or ADMIN_TOKEN bearer. Anything
+    // without valid auth sees a 404 instead of a real response.
+    if (path === "/admin" || path.startsWith("/admin/")) {
+      if (!isAdmin(request, env)) return notFound();
+      if (path === "/admin" && request.method === "GET") return handleAdminPage(url, env);
+      if (path.startsWith("/admin/approve/") && request.method === "POST") return handleApprove(path, request, env);
+      if (path.startsWith("/admin/reject/") && request.method === "POST") return handleReject(path, env);
+    }
 
     return jsonResponse({ error: "Not found" }, 404);
   },

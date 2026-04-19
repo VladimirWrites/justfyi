@@ -5,4 +5,4 @@ compatibility_date = "2024-01-01"
 [[d1_databases]]
 binding = "DB"
 database_name = "justfyi"
-database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+database_id = "44d42e07-fe11-4b1f-b2d9-b28ec096b4f2"
