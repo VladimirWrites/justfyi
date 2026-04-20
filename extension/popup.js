@@ -52,9 +52,55 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
 
   setupSubmitForm();
+  setupCategoryDropdown();
   setupNewsletterToggle();
   setupNewsletterForm();
 });
+
+function setupCategoryDropdown() {
+  const multi = document.getElementById("category-multi");
+  const trigger = document.getElementById("category-trigger");
+  const menu = document.getElementById("category-menu");
+  const summary = document.getElementById("category-summary");
+  if (!trigger || !menu) return;
+
+  const options = [...menu.querySelectorAll(".multi-option")];
+
+  function refreshSummary() {
+    const selected = options.filter(o => o.getAttribute("aria-selected") === "true");
+    if (selected.length === 0) {
+      summary.textContent = "Select categories…";
+      summary.classList.add("placeholder");
+    } else {
+      const labels = selected.map(o => o.textContent.trim());
+      summary.textContent = selected.length <= 2
+        ? labels.join(", ")
+        : `${labels[0]} + ${selected.length - 1} more`;
+      summary.classList.remove("placeholder");
+    }
+  }
+
+  function setOpen(open) {
+    menu.classList.toggle("hidden", !open);
+    trigger.setAttribute("aria-expanded", String(open));
+  }
+
+  trigger.addEventListener("click", () => setOpen(menu.classList.contains("hidden")));
+  for (const opt of options) {
+    opt.addEventListener("click", () => {
+      const was = opt.getAttribute("aria-selected") === "true";
+      opt.setAttribute("aria-selected", String(!was));
+      refreshSummary();
+    });
+  }
+  document.addEventListener("click", (e) => {
+    if (!multi.contains(e.target)) setOpen(false);
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") setOpen(false);
+  });
+  refreshSummary();
+}
 
 function showRating(rating, allRatings) {
   const section = document.getElementById("rating-section");
@@ -77,15 +123,27 @@ function showRating(rating, allRatings) {
   maybeShowDisclaimer(rating);
 
   // Show alternatives for tools with friction (paid / limited). Only
-  // curated "rec" entries in the same category, excluding this tool.
-  if (rating.s >= 2 && rating.cat) {
-    const alternatives = allRatings.filter(
-      r => r.rec && r.cat === rating.cat && r.d !== rating.d
-    );
+  // curated "rec" entries that cover ALL of this tool's categories —
+  // so Signal (messaging + video calls) only surfaces alternatives
+  // that are also messaging + video calls, not messaging-only apps.
+  // `cat` can be a number (single) or an array (multi); normalise.
+  const subjectCats = catsOf(rating);
+  if (rating.s >= 2 && subjectCats.length) {
+    const alternatives = allRatings.filter(r => {
+      if (!r.rec || r.d === rating.d) return false;
+      const altCats = catsOf(r);
+      return subjectCats.every(c => altCats.includes(c));
+    });
     if (alternatives.length) showAlternatives(alternatives);
   }
 
   showSubmitForm(rating.s);
+}
+
+function catsOf(r) {
+  if (Array.isArray(r.cat)) return r.cat;
+  if (typeof r.cat === "number") return [r.cat];
+  return [];
 }
 
 function maybeShowDisclaimer(rating) {
@@ -202,10 +260,24 @@ function setupSubmitForm() {
     const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
     const rawUrl = tabs[0]?.url || "";
 
+    const status = parseInt(document.getElementById("status-select").value, 10);
+    const categories = [...document.querySelectorAll('#category-menu .multi-option[aria-selected="true"]')]
+      .map(li => parseInt(li.dataset.value, 10));
+    // Require at least one category for in-scope submissions.
+    if (status !== 0 && categories.length === 0) {
+      const resultEl = document.getElementById("submit-result");
+      resultEl.classList.remove("hidden");
+      resultEl.className = "result-error";
+      resultEl.innerHTML = svgIcon("warning") + "Pick at least one category.";
+      btn.disabled = false;
+      btn.innerHTML = svgIcon("send", "icon btn-icon") + "Submit Rating";
+      return;
+    }
+
     const data = {
       domain: rawUrl,
-      status: parseInt(document.getElementById("status-select").value, 10),
-      category: parseInt(document.getElementById("category-select").value, 10) || null,
+      status,
+      categories,
       openSource: document.getElementById("opensource-check").checked,
       login: document.getElementById("login-check").checked,
       abandoned: document.getElementById("abandoned-check").checked,

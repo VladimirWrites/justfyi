@@ -480,6 +480,83 @@ h3 {
   accent-color: var(--primary);
 }
 
+/* Multi-select dropdown for categories in the submission form:
+   a trigger that looks like a select, click to reveal a scrollable
+   checkbox menu anchored below. */
+.multi-select { position: relative; }
+
+.multi-select-trigger {
+  width: 100%;
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--sp-2);
+  padding: 9px var(--sp-3);
+  background: var(--surface-container-lowest);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-md);
+  color: var(--on-surface);
+  font: inherit; font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 150ms ease-out, box-shadow 150ms ease-out;
+}
+.multi-select-trigger:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: var(--focus-ring);
+}
+.multi-select-summary {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.multi-select-summary.placeholder { color: var(--on-surface-variant); }
+.multi-select-trigger .expand-icon {
+  width: 16px; height: 16px;
+  color: var(--on-surface-variant);
+  transition: transform 150ms ease-out;
+}
+.multi-select-trigger[aria-expanded="true"] .expand-icon { transform: rotate(180deg); }
+
+/* Listbox menu — floats below the trigger like a native <select>'s
+   dropdown. Own scrollbar, capped height so the whole thing fits
+   inside the Chrome popup without pushing the form down. */
+.multi-select-menu {
+  position: absolute;
+  top: calc(100% + 4px); left: 0; right: 0;
+  z-index: 10;
+  max-height: 180px; overflow-y: auto;
+  margin: 0;
+  padding: 4px 0;
+  list-style: none;
+  background: var(--surface);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-md);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
+}
+
+.multi-option {
+  position: relative;
+  padding: 8px 14px 8px 34px;
+  font-size: 13px;
+  color: var(--on-surface);
+  cursor: pointer;
+  user-select: none;
+}
+.multi-option:hover,
+.multi-option:focus { background: var(--surface-container-low); outline: none; }
+.multi-option[aria-selected="true"] { color: var(--primary); font-weight: 600; }
+.multi-option[aria-selected="true"]::before {
+  content: "";
+  position: absolute;
+  left: 12px; top: 50%;
+  width: 14px; height: 14px;
+  transform: translateY(-50%);
+  background-repeat: no-repeat;
+  background-size: 14px 14px;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 -960 960 960' fill='%23006C49'><path d='M382-240 154-468l57-57 171 171 367-367 57 57-424 424Z'/></svg>");
+}
+
 #submit-btn {
   margin-top: var(--sp-4);
   width: 100%;

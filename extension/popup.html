@@ -89,27 +89,47 @@
           <option value="0">Not a tool / out of scope</option>
         </select>
 
-        <label for="category-select">Category</label>
-        <select id="category-select">
-          <option value="">-- Select --</option>
-          <option value="1">PDF</option>
-          <option value="2">Image</option>
-          <option value="3">Video</option>
-          <option value="4">Audio</option>
-          <option value="5">AI Generate</option>
-          <option value="6">Writing</option>
-          <option value="7">Dev</option>
-          <option value="8">Design</option>
-          <option value="9">File Convert</option>
-          <option value="10">Notes / Docs</option>
-          <option value="11">SEO</option>
-          <option value="12">Security</option>
-          <option value="13">VPN</option>
-          <option value="14">Browser</option>
-          <option value="15">Tasks / Project Mgmt</option>
-          <option value="16">Cloud Storage</option>
-          <option value="999">Other</option>
-        </select>
+        <label>Categories</label>
+        <div class="multi-select" id="category-multi">
+          <button type="button" class="multi-select-trigger" id="category-trigger" aria-expanded="false">
+            <span id="category-summary" class="multi-select-summary placeholder">Select categories…</span>
+            <svg class="icon expand-icon" aria-hidden="true"><use href="#i-expand_more"/></svg>
+          </button>
+          <ul class="multi-select-menu hidden" id="category-menu" role="listbox" aria-multiselectable="true">
+            <li class="multi-option" role="option" data-value="1">PDF</li>
+            <li class="multi-option" role="option" data-value="2">Image</li>
+            <li class="multi-option" role="option" data-value="3">Video</li>
+            <li class="multi-option" role="option" data-value="4">Audio</li>
+            <li class="multi-option" role="option" data-value="5">AI Generate</li>
+            <li class="multi-option" role="option" data-value="6">Writing</li>
+            <li class="multi-option" role="option" data-value="7">Dev</li>
+            <li class="multi-option" role="option" data-value="8">Design</li>
+            <li class="multi-option" role="option" data-value="9">File Convert</li>
+            <li class="multi-option" role="option" data-value="10">Notes / Docs</li>
+            <li class="multi-option" role="option" data-value="11">SEO</li>
+            <li class="multi-option" role="option" data-value="12">Security</li>
+            <li class="multi-option" role="option" data-value="13">VPN</li>
+            <li class="multi-option" role="option" data-value="14">Browser</li>
+            <li class="multi-option" role="option" data-value="15">Tasks</li>
+            <li class="multi-option" role="option" data-value="16">Cloud Storage</li>
+            <li class="multi-option" role="option" data-value="17">Communication</li>
+            <li class="multi-option" role="option" data-value="18">Email</li>
+            <li class="multi-option" role="option" data-value="19">Learning</li>
+            <li class="multi-option" role="option" data-value="20">Analytics</li>
+            <li class="multi-option" role="option" data-value="21">Automation</li>
+            <li class="multi-option" role="option" data-value="22">Video Calls</li>
+            <li class="multi-option" role="option" data-value="23">Code Hosting</li>
+            <li class="multi-option" role="option" data-value="24">Deploy / Hosting</li>
+            <li class="multi-option" role="option" data-value="25">Playgrounds / Online IDE</li>
+            <li class="multi-option" role="option" data-value="26">Finance / Accounting</li>
+            <li class="multi-option" role="option" data-value="27">Forms & Surveys</li>
+            <li class="multi-option" role="option" data-value="28">CRM / Sales</li>
+            <li class="multi-option" role="option" data-value="29">Translation</li>
+            <li class="multi-option" role="option" data-value="30">3D / CAD</li>
+            <li class="multi-option" role="option" data-value="31">Maps / Navigation</li>
+            <li class="multi-option" role="option" data-value="999">Other</li>
+          </ul>
+        </div>
 
         <label class="checkbox-label">
           <input type="checkbox" id="opensource-check">

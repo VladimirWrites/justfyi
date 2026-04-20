@@ -71,15 +71,22 @@ Status is the money/friction axis. Login and abandoned are orthogonal flags (see
 
 | Code | Label          | Code | Label                  |
 |------|----------------|------|------------------------|
-| 1    | PDF            | 10   | Notes / Docs           |
-| 2    | Image          | 11   | SEO                    |
-| 3    | Video          | 12   | Security               |
-| 4    | Audio          | 13   | VPN                    |
-| 5    | AI Generate    | 14   | Browser                |
-| 6    | Writing        | 15   | Tasks / Project Mgmt   |
-| 7    | Dev            | 16   | Cloud Storage          |
-| 8    | Design         | 999  | Other                  |
-| 9    | File Convert   |      |                        |
+| 1    | PDF            | 17   | Communication            |
+| 2    | Image          | 18   | Email                    |
+| 3    | Video          | 19   | Learning                 |
+| 4    | Audio          | 20   | Analytics                |
+| 5    | AI Generate    | 21   | Automation               |
+| 6    | Writing        | 22   | Video Calls              |
+| 7    | Dev            | 23   | Code Hosting             |
+| 8    | Design         | 24   | Deploy / Hosting         |
+| 9    | File Convert   | 25   | Playgrounds / Online IDE |
+| 10   | Notes / Docs   | 26   | Finance / Accounting     |
+| 11   | SEO            | 27   | Forms & Surveys          |
+| 12   | Security       | 28   | CRM / Sales              |
+| 13   | VPN            | 29   | Translation              |
+| 14   | Browser        | 30   | 3D / CAD                 |
+| 15   | Tasks / PM     | 31   | Maps / Navigation        |
+| 16   | Cloud Storage  | 999  | Other                    |
 
 `999` is the catch-all so numbered categories can grow contiguously without renumbering.
 

@@ -22,7 +22,7 @@
 // ───────────────────────────────────────────────────────────
 
 const VALID_STATUSES = [0, 1, 2, 3];
-const VALID_CATEGORIES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 999];
+const VALID_CATEGORIES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 999];
 
 const STATUS_LABELS = {
   0: "Out of scope",
@@ -41,8 +41,36 @@ const CATEGORY_LABELS = {
   6: "Writing", 7: "Dev", 8: "Design", 9: "File Convert",
   10: "Notes / Docs", 11: "SEO", 12: "Security", 13: "VPN",
   14: "Browser", 15: "Tasks / Project Mgmt", 16: "Cloud Storage",
+  17: "Communication", 18: "Email", 19: "Learning", 20: "Analytics",
+  21: "Automation", 22: "Video Calls",
+  23: "Code Hosting", 24: "Deploy / Hosting", 25: "Playgrounds / Online IDE",
+  26: "Finance / Accounting", 27: "Forms & Surveys", 28: "CRM / Sales",
+  29: "Translation", 30: "3D / CAD", 31: "Maps / Navigation",
   999: "Other",
 };
+
+// Normalise any of these inputs into a sorted-unique int[] of valid cats:
+//   • `categories: [17, 22]`  — new canonical
+//   • `category: 17`          — legacy single-int, accepted for compat
+//   • JSON string '[17, 22]'  — what we store in D1
+// Returns null if input is missing/invalid so the caller can fall back.
+function parseCategories(body) {
+  let raw = body?.categories ?? (body?.category !== undefined ? [body.category] : null);
+  if (typeof raw === "string") { try { raw = JSON.parse(raw); } catch { return null; } }
+  if (!Array.isArray(raw)) return null;
+  const out = [];
+  for (const v of raw) {
+    const n = typeof v === "number" ? v : parseInt(v, 10);
+    if (!VALID_CATEGORIES.includes(n)) return null;
+    if (!out.includes(n)) out.push(n);
+  }
+  return out.sort((a, b) => a - b);
+}
+
+// Parse the stored categories string on a D1 row. Always returns an array.
+function rowCategories(row) {
+  try { return JSON.parse(row.categories || "[]"); } catch { return []; }
+}
 const REVIEW = { PENDING: "pending", APPROVED: "approved", REJECTED: "rejected" };
 
 const RATE_LIMIT_MAX = 5;
@@ -242,7 +270,7 @@ async function handleSubmitRating(request, env) {
   try { body = await request.json(); }
   catch { return jsonResponse({ error: "Invalid JSON body." }, 400); }
 
-  const { domain, status, category, openSource, login, abandoned, note } = body;
+  const { domain, status, openSource, login, abandoned, note } = body;
 
   if (!domain || typeof domain !== "string" || domain.trim().length === 0)
     return jsonResponse({ error: "domain is required." }, 400);
@@ -250,9 +278,11 @@ async function handleSubmitRating(request, env) {
     return jsonResponse({ error: "status must be 0-3." }, 400);
 
   // Out-of-scope entries don't carry category/flags
+  let cats = [];
   if (status !== 0) {
-    if (!VALID_CATEGORIES.includes(category))
-      return jsonResponse({ error: "category is invalid." }, 400);
+    cats = parseCategories(body);
+    if (!cats || cats.length === 0)
+      return jsonResponse({ error: "category is required (provide `categories: [..]` or `category: N`)." }, 400);
     if (typeof openSource !== "boolean")
       return jsonResponse({ error: "openSource must be a boolean." }, 400);
     if (login !== undefined && typeof login !== "boolean")
@@ -268,11 +298,12 @@ async function handleSubmitRating(request, env) {
   // Community submissions never set "recommended" or "name" — those
   // are curation choices the admin makes after review.
   await env.DB.prepare(
-    `INSERT INTO submissions (domain, status, category, open_source, login, abandoned, recommended, name, note, submitted_at)
-     VALUES (?, ?, ?, ?, ?, ?, 0, NULL, ?, datetime('now'))`
+    `INSERT INTO submissions (domain, status, category, categories, open_source, login, abandoned, recommended, name, note, submitted_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 0, NULL, ?, datetime('now'))`
   ).bind(
     normalizeUrl(domain), status,
-    status === 0 ? 0 : category,
+    status === 0 ? 0 : cats[0],      // legacy `category` column — keep first cat for back-compat
+    JSON.stringify(cats),            // canonical `categories` column
     openSource ? 1 : 0,
     login ? 1 : 0,
     abandoned ? 1 : 0,
@@ -408,14 +439,18 @@ function formatJsonEntry(obj) {
 }
 
 // Build a ratings.json entry from a D1 submissions row. Field order
-// matches the hand-curated file: d, s, os, cat, n, rec, lg, ab.
+// matches the hand-curated file: d, s, os, cat, n, rec, lg, ab. The
+// `cat` field is a scalar when the entry has exactly one category and
+// an array when it has more — preserves the existing file's shape for
+// single-cat entries while allowing multi-cat when we need it.
 function rowToJsonEntry(row) {
   if (row.status === 0) return { d: row.domain, s: 0 };
+  const cats = rowCategories(row);
   const e = {
     d: row.domain,
     s: row.status,
     os: Boolean(row.open_source),
-    cat: row.category,
+    cat: cats.length === 1 ? cats[0] : cats,
   };
   if (row.name) e.n = row.name;
   if (row.recommended) e.rec = true;
@@ -444,21 +479,27 @@ async function handleAdminPage(url, env) {
 
 // For each pending submission, look up the most recent approved row
 // for the same domain so the diff view can show what would change.
+// Chunked because D1 caps a single query at 100 bound parameters.
 async function attachCurrentApproved(env, pendingRows) {
   if (!pendingRows.length) return pendingRows.map(s => ({ ...s, current: null }));
 
-  const domains = pendingRows.map(s => s.domain);
-  const placeholders = domains.map(() => "?").join(",");
-  const { results } = await env.DB.prepare(
-    `SELECT s.* FROM submissions s
-     JOIN (
-       SELECT domain, MAX(id) AS max_id
-       FROM submissions
-       WHERE review = 'approved' AND domain IN (${placeholders})
-       GROUP BY domain
-     ) latest ON s.id = latest.max_id`
-  ).bind(...domains).all();
-  const byDomain = new Map(results.map(r => [r.domain, r]));
+  const domains = [...new Set(pendingRows.map(s => s.domain))];
+  const byDomain = new Map();
+  const CHUNK = 90;
+  for (let i = 0; i < domains.length; i += CHUNK) {
+    const slice = domains.slice(i, i + CHUNK);
+    const placeholders = slice.map(() => "?").join(",");
+    const { results } = await env.DB.prepare(
+      `SELECT s.* FROM submissions s
+       JOIN (
+         SELECT domain, MAX(id) AS max_id
+         FROM submissions
+         WHERE review = 'approved' AND domain IN (${placeholders})
+         GROUP BY domain
+       ) latest ON s.id = latest.max_id`
+    ).bind(...slice).all();
+    for (const r of results) byDomain.set(r.domain, r);
+  }
 
   return pendingRows.map(s => ({ ...s, current: byDomain.get(s.domain) || null }));
 }
@@ -479,11 +520,19 @@ async function handleApprove(path, request, env) {
     body[key] !== undefined ? transform(body[key]) : fallback;
 
   const finalStatus = pick("status", sub.status);
-  const finalCat = pick("category", sub.category);
   const finalOs = pick("openSource", sub.open_source, asInt01);
   const finalLogin = pick("login", sub.login, asInt01);
   const finalAbandoned = pick("abandoned", sub.abandoned, asInt01);
   const finalRec = pick("recommended", sub.recommended, asInt01);
+
+  // Categories: accept new `categories` array OR legacy `category` int,
+  // falling back to whatever's on the row.
+  let finalCats = rowCategories(sub);
+  if (body.categories !== undefined || body.category !== undefined) {
+    const parsed = parseCategories(body);
+    if (parsed) finalCats = parsed;
+  }
+  const finalCat = finalCats[0] ?? 0;  // legacy column
 
   // Curation name: "" or whitespace-only clears the field; otherwise
   // clean and cap at 80 chars.
@@ -495,11 +544,11 @@ async function handleApprove(path, request, env) {
 
   await env.DB.prepare(
     `UPDATE submissions
-       SET review = ?, status = ?, category = ?, open_source = ?,
+       SET review = ?, status = ?, category = ?, categories = ?, open_source = ?,
            login = ?, abandoned = ?, recommended = ?, name = ?
      WHERE id = ?`
   ).bind(
-    REVIEW.APPROVED, finalStatus, finalCat, finalOs,
+    REVIEW.APPROVED, finalStatus, finalCat, JSON.stringify(finalCats), finalOs,
     finalLogin, finalAbandoned, finalRec, finalName, id
   ).run();
 
@@ -618,17 +667,32 @@ const ADMIN_CSS = `
   /* Name / rec indicator in the domain cell */
   .row-name { font-weight: 700; }
   .row-rec  { color: #006C49; }
-  .row-domain { font-weight: 500; }
+  .row-domain { font-weight: 500; color: inherit; text-decoration: none; }
+  .row-domain:hover { color: #006C49; text-decoration: underline; }
+
+  /* NEW / CHANGE pill on pending rows — tells the admin at a glance
+     whether approving this will add a row to the catalog or overwrite
+     an existing one. */
+  .kind { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 10px; font-weight: 700; letter-spacing: 0.06em; margin-right: 8px; vertical-align: middle; }
+  .kind--new    { background: #E8F5E9; color: #2E7D32; }
+  .kind--change { background: #FFF3BF; color: #8A6D00; }
 
   #toast { position: fixed; bottom: 24px; right: 24px; background: #1C1B1F; color: #fff; padding: 10px 20px; border-radius: 8px; font-size: 13px; display: none; z-index: 100; }
 
   /* Edit dialog — native <dialog> default positioning varies by browser,
      so pin the centering explicitly. */
   dialog#edit-dialog {
-    width: 420px; max-width: 90vw; border: none; border-radius: 16px;
+    width: 540px; max-width: 90vw; max-height: 90vh; overflow-y: auto;
+    border: none; border-radius: 16px;
     padding: 0; box-shadow: 0 20px 50px rgba(0,0,0,0.18);
     position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); margin: 0;
   }
+  dialog#edit-dialog .hint { font-weight: 400; color: #888; font-size: 11px; }
+  dialog#edit-dialog .cat-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px 14px;
+    border: 1px solid #E0E0E0; border-radius: 8px; padding: 10px 12px;
+  }
+  dialog#edit-dialog .cat-grid label.check { margin: 2px 0; font-size: 12.5px; }
   dialog#edit-dialog::backdrop { background: rgba(0,0,0,0.4); }
   dialog#edit-dialog form { padding: 24px; }
   dialog#edit-dialog h3 { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
@@ -689,7 +753,10 @@ function openEdit(btn, title) {
   document.getElementById('edit-domain').textContent = domainCell ? domainCell.innerText.trim() : '';
 
   document.getElementById('edit-status').value = btn.dataset.status;
-  document.getElementById('edit-category').value = btn.dataset.category;
+  const selectedCats = new Set(JSON.parse(btn.dataset.categories || '[]').map(String));
+  for (const cb of document.querySelectorAll('#edit-categories input[name="cat"]')) {
+    cb.checked = selectedCats.has(cb.value);
+  }
   document.getElementById('edit-os').checked = btn.dataset.os === '1';
   document.getElementById('edit-lg').checked = btn.dataset.lg === '1';
   document.getElementById('edit-ab').checked = btn.dataset.ab === '1';
@@ -702,9 +769,11 @@ function openEdit(btn, title) {
 
 document.getElementById('edit-form').addEventListener('submit', async (e) => {
   e.preventDefault();
+  const categories = [...document.querySelectorAll('#edit-categories input[name="cat"]:checked')]
+    .map(cb => parseInt(cb.value, 10));
   const body = {
     status: parseInt(document.getElementById('edit-status').value, 10),
-    category: parseInt(document.getElementById('edit-category').value, 10),
+    categories,
     openSource: document.getElementById('edit-os').checked,
     login: document.getElementById('edit-lg').checked,
     abandoned: document.getElementById('edit-ab').checked,
@@ -746,11 +815,16 @@ function renderDiffRow(sub) {
   const mark = (changed, text) =>
     changed ? `<span class="diff-mark">${text}</span>` : text;
 
+  const curCats = rowCategories(cur);
+  const subCats = rowCategories(sub);
+  const sameCats = curCats.length === subCats.length
+    && curCats.every((c, i) => c === subCats[i]);
+  const curCatsLabel = curCats.map(c => escHtml(CATEGORY_LABELS[c] || c)).join(" / ") || "—";
+
   const parts = [
     mark(cur.status !== sub.status,
       `status ${escHtml(STATUS_LABELS[cur.status] || cur.status)}`),
-    mark(cur.category !== sub.category,
-      `cat ${escHtml(CATEGORY_LABELS[cur.category] || cur.category || "—")}`),
+    mark(!sameCats, `cats ${curCatsLabel}`),
     mark(cur.open_source !== sub.open_source, `OS:${cur.open_source ? "yes" : "no"}`),
     mark(cur.login !== sub.login, `login:${cur.login ? "yes" : "no"}`),
     mark(cur.abandoned !== sub.abandoned, `abandoned:${cur.abandoned ? "yes" : "no"}`),
@@ -762,12 +836,15 @@ function renderDiffRow(sub) {
 
 function renderRow(sub, showActions) {
   const os = sub.open_source ? "Yes" : "No";
+  const cats = rowCategories(sub);
+  const catsLabel = cats.map(c => escHtml(CATEGORY_LABELS[c] || c)).join(", ") || "—";
   // Every field the edit dialog needs, stuffed on the button so the JS
-  // can read them without another network call.
+  // can read them without another network call. data-categories is a
+  // JSON string so the dialog can parse and tick the right checkboxes.
   const editAttrs = [
     `data-id="${sub.id}"`,
     `data-status="${sub.status}"`,
-    `data-category="${sub.category ?? 0}"`,
+    `data-categories="${escHtml(JSON.stringify(cats))}"`,
     `data-os="${sub.open_source ? 1 : 0}"`,
     `data-lg="${sub.login ? 1 : 0}"`,
     `data-ab="${sub.abandoned ? 1 : 0}"`,
@@ -790,11 +867,18 @@ function renderRow(sub, showActions) {
 
   const nameBit = sub.name ? `<span class="row-name">${escHtml(sub.name)}</span> — ` : "";
   const recBit = sub.recommended ? ' <span class="row-rec" title="Recommended">★</span>' : "";
+  // On pending rows, lead with a NEW / CHANGE pill so approving-on-autopilot
+  // can't accidentally overwrite a curated entry.
+  const kindBit = showActions && "current" in sub
+    ? (sub.current
+        ? '<span class="kind kind--change" title="Will overwrite an existing approved row">CHANGE</span>'
+        : '<span class="kind kind--new" title="Will add a new row to the catalog">NEW</span>')
+    : "";
 
   const mainRow = `<tr>
-    <td>${nameBit}<span class="row-domain">${escHtml(sub.domain)}</span>${recBit}</td>
+    <td>${kindBit}${nameBit}<a class="row-domain" href="https://${escHtml(sub.domain)}" target="_blank" rel="noopener noreferrer">${escHtml(sub.domain)}</a>${recBit}</td>
     <td>${renderStatusBadge(sub.status)}</td>
-    <td>${escHtml(CATEGORY_LABELS[sub.category] || sub.category)}</td>
+    <td>${catsLabel}</td>
     <td>${os}</td>
     <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${sub.note ? escHtml(sub.note) : "-"}</td>
     <td style="font-size:12px;color:#666">${escHtml(sub.submitted_at)}</td>
@@ -853,21 +937,20 @@ function renderAdminHTML(pending, reviewed, activeTab) {
     <h3 id="edit-title">Edit entry</h3>
     <div class="sub" id="edit-domain"></div>
 
-    <div class="row">
-      <label class="field">Status
-        <select id="edit-status">
-          <option value="1">Free</option>
-          <option value="2">Free with limits</option>
-          <option value="3">Paid</option>
-          <option value="0">Out of scope</option>
-        </select>
-      </label>
-      <label class="field">Category
-        <select id="edit-category">
-          ${Object.entries(CATEGORY_LABELS).map(([v, l]) =>
-            `<option value="${v}">${escHtml(l)}</option>`).join("")}
-        </select>
-      </label>
+    <label class="field">Status
+      <select id="edit-status">
+        <option value="1">Free</option>
+        <option value="2">Free with limits</option>
+        <option value="3">Paid</option>
+        <option value="0">Out of scope</option>
+      </select>
+    </label>
+
+    <label class="field">Categories <span class="hint">(pick one or more)</span></label>
+    <div class="cat-grid" id="edit-categories">
+      ${Object.entries(CATEGORY_LABELS).map(([v, l]) =>
+        `<label class="check"><input type="checkbox" name="cat" value="${v}"> ${escHtml(l)}</label>`
+      ).join("")}
     </div>
 
     <label class="field" for="edit-name">Display name</label>

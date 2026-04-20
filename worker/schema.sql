@@ -2,7 +2,8 @@ CREATE TABLE IF NOT EXISTS submissions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   domain TEXT NOT NULL,
   status INTEGER NOT NULL,
-  category INTEGER NOT NULL,
+  category INTEGER NOT NULL,              -- legacy: mirrors first element of `categories`
+  categories TEXT NOT NULL DEFAULT '[]',  -- JSON array of category ids
   open_source INTEGER NOT NULL DEFAULT 0,
   login INTEGER NOT NULL DEFAULT 0,
   abandoned INTEGER NOT NULL DEFAULT 0,
