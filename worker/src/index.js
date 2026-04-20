@@ -352,6 +352,78 @@ function handleAdminLogout() {
   });
 }
 
+// GET /admin/export → downloadable ratings.json built from the
+// approved rows in D1. Ordering matches what's hand-curated in the
+// repo:
+//   1. Recommended entries, sorted by category then id.
+//   2. Blank line.
+//   3. Non-recommended with a real category, grouped by category with
+//      a blank line between category groups.
+//   4. Blank line.
+//   5. Out-of-scope (status = 0) entries at the end.
+async function handleAdminExport(env) {
+  const { results } = await env.DB.prepare(
+    `SELECT * FROM submissions
+     WHERE review = ?
+     ORDER BY recommended DESC, (status = 0) ASC, category ASC, id ASC`
+  ).bind(REVIEW.APPROVED).all();
+
+  const lines = ["["];
+  let prev = null;
+  for (let i = 0; i < results.length; i++) {
+    const row = results[i];
+    const isRec = row.recommended === 1;
+    const isOos = row.status === 0;
+
+    if (prev) {
+      const recEnded = prev.isRec && !isRec;
+      const nonRecCatChanged = !isRec && !isOos && !prev.isOos && row.category !== prev.category;
+      const oosStarted = isOos && !prev.isOos;
+      if (recEnded || nonRecCatChanged || oosStarted) lines.push("");
+    }
+
+    const comma = i < results.length - 1 ? "," : "";
+    lines.push("  " + formatJsonEntry(rowToJsonEntry(row)) + comma);
+    prev = { isRec, isOos, category: row.category };
+  }
+  lines.push("]", "");  // trailing newline
+
+  return new Response(lines.join("\n"), {
+    status: 200,
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      "Content-Disposition": 'attachment; filename="ratings.json"',
+      "Cache-Control": "no-store",
+    },
+  });
+}
+
+// Single-line JSON object with a space after every ":" and ",", to
+// match the hand-curated ratings.json style.
+function formatJsonEntry(obj) {
+  const pairs = Object.entries(obj).map(
+    ([k, v]) => `${JSON.stringify(k)}: ${JSON.stringify(v)}`
+  );
+  return `{ ${pairs.join(", ")} }`;
+}
+
+// Build a ratings.json entry from a D1 submissions row. Field order
+// matches the hand-curated file: d, s, os, cat, n, rec, lg, ab.
+function rowToJsonEntry(row) {
+  if (row.status === 0) return { d: row.domain, s: 0 };
+  const e = {
+    d: row.domain,
+    s: row.status,
+    os: Boolean(row.open_source),
+    cat: row.category,
+  };
+  if (row.name) e.n = row.name;
+  if (row.recommended) e.rec = true;
+  if (row.login) e.lg = true;
+  if (row.abandoned) e.ab = true;
+  return e;
+}
+
 async function handleAdminPage(url, env) {
   const tab = url.searchParams.get("tab") || REVIEW.PENDING;
 
@@ -524,8 +596,8 @@ const ADMIN_CSS = `
   tr:last-child td { border-bottom: none; }
   .empty { text-align: center; padding: 48px; color: #999; font-size: 14px; }
 
-  /* Pill buttons */
-  .btn { border: none; padding: 6px 14px; border-radius: 100px; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; margin-right: 4px; color: #fff; }
+  /* Pill buttons — work for both <button> and <a> uses. */
+  .btn { display: inline-flex; align-items: center; border: none; padding: 6px 14px; border-radius: 100px; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; margin-right: 4px; color: #fff; text-decoration: none; }
   .btn--approve { background: #006C49; }
   .btn--edit { background: #005BC4; }
   .btn--reject { background: #9F403D; }
@@ -724,6 +796,7 @@ function renderAdminHTML(pending, reviewed, activeTab) {
   <h1>JustFYI Admin</h1>
   <div class="stats">
     <span><strong>${pending.length}</strong> pending</span>
+    <a class="btn btn--ghost" href="/admin/export" download="ratings.json">Export JSON</a>
     <form method="POST" action="/admin/logout" style="display:inline">
       <button type="submit" class="btn btn--ghost">Sign out</button>
     </form>
@@ -790,6 +863,7 @@ export default {
       }
 
       if (path === "/admin" && request.method === "GET") return handleAdminPage(url, env);
+      if (path === "/admin/export" && request.method === "GET") return handleAdminExport(env);
       if (path.startsWith("/admin/approve/") && request.method === "POST") return handleApprove(path, request, env);
       if (path.startsWith("/admin/reject/") && request.method === "POST") return handleReject(path, env);
     }
