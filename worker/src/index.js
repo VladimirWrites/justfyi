@@ -677,6 +677,19 @@ const ADMIN_CSS = `
   .kind--new    { background: #E8F5E9; color: #2E7D32; }
   .kind--change { background: #FFF3BF; color: #8A6D00; }
 
+  /* Login / abandoned flags in the domain cell */
+  .flag { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 10px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; margin-left: 6px; vertical-align: middle; }
+  .flag--lg { background: #E3F2FD; color: #0D47A1; }
+  .flag--ab { background: #EEE; color: #555; }
+
+  /* Per-table filter bar */
+  .filters { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; padding: 10px 14px; background: #fff; border: 1px solid #E0E0E0; border-radius: 8px; }
+  .filters input, .filters select { padding: 6px 10px; border: 1px solid #D0D0D0; border-radius: 6px; font: inherit; font-size: 12px; background: #fff; color: #1C1B1F; }
+  .filters input.f-search { flex: 1; min-width: 220px; }
+  .filters input:focus, .filters select:focus { outline: none; border-color: #006C49; box-shadow: 0 0 0 2px rgba(0,108,73,0.15); }
+  .filters .f-clear { padding: 6px 14px; border: 1px solid #CAC4D0; background: #fff; border-radius: 100px; cursor: pointer; font: inherit; font-size: 12px; color: #49454F; }
+  .filters .f-count { margin-left: auto; font-size: 12px; color: #666; }
+
   #toast { position: fixed; bottom: 24px; right: 24px; background: #1C1B1F; color: #fff; padding: 10px 20px; border-radius: 8px; font-size: 13px; display: none; z-index: 100; }
 
   /* Edit dialog — native <dialog> default positioning varies by browser,
@@ -799,6 +812,84 @@ async function reject(id) {
   await fetch('/admin/reject/' + id, { method: 'POST' });
   toastAndReload('Rejected');
 }
+
+function initFilters(scope) {
+  const bar = document.querySelector('.filters[data-scope="' + scope + '"]');
+  if (!bar) return;
+  const table = bar.nextElementSibling;
+  const rows = [...table.querySelectorAll('tbody > tr[data-row]')];
+  const countEl = bar.querySelector('.f-count');
+  const qEl = bar.querySelector('.f-search');
+  const sEl = bar.querySelector('.f-status');
+  const cEl = bar.querySelector('.f-cat');
+  const oEl = bar.querySelector('.f-os');
+  const fEl = bar.querySelector('.f-flag');
+  const rEl = bar.querySelector('.f-review');
+
+  // Restore from localStorage so filters survive reloads after
+  // approve/reject/update actions.
+  const storeKey = 'filters:' + scope;
+  try {
+    const saved = JSON.parse(localStorage.getItem(storeKey) || '{}');
+    if (saved.q != null) qEl.value = saved.q;
+    if (saved.s != null) sEl.value = saved.s;
+    if (saved.c != null) cEl.value = saved.c;
+    if (saved.o != null) oEl.value = saved.o;
+    if (saved.f != null) fEl.value = saved.f;
+    if (rEl && saved.r != null) rEl.value = saved.r;
+  } catch {}
+
+  const save = () => {
+    const state = { q: qEl.value, s: sEl.value, c: cEl.value, o: oEl.value, f: fEl.value };
+    if (rEl) state.r = rEl.value;
+    localStorage.setItem(storeKey, JSON.stringify(state));
+  };
+
+  const apply = () => {
+    const q = qEl.value.trim().toLowerCase();
+    const s = sEl.value;
+    const c = cEl.value;
+    const o = oEl.value;
+    const f = fEl.value;
+    const rv = rEl ? rEl.value : '';
+    let visible = 0;
+    for (const tr of rows) {
+      let show = true;
+      if (q && !(tr.dataset.domain.includes(q) || tr.dataset.name.includes(q) || tr.dataset.note.includes(q))) show = false;
+      if (show && s && tr.dataset.status !== s) show = false;
+      if (show && c) {
+        const cats = JSON.parse(tr.dataset.cats || '[]');
+        if (!cats.includes(parseInt(c, 10))) show = false;
+      }
+      if (show && o && tr.dataset.os !== o) show = false;
+      if (show && f) {
+        if (f === 'rec' && tr.dataset.rec !== '1') show = false;
+        else if (f === 'lg' && tr.dataset.lg !== '1') show = false;
+        else if (f === 'ab' && tr.dataset.ab !== '1') show = false;
+        else if (f === 'none' && (tr.dataset.rec === '1' || tr.dataset.lg === '1' || tr.dataset.ab === '1')) show = false;
+      }
+      if (show && rv && tr.dataset.review !== rv) show = false;
+      tr.style.display = show ? '' : 'none';
+      const next = tr.nextElementSibling;
+      if (next && next.dataset.diff) next.style.display = show ? '' : 'none';
+      if (show) visible++;
+    }
+    countEl.textContent = visible + ' of ' + rows.length;
+  };
+
+  const onChange = () => { save(); apply(); };
+  bar.addEventListener('input', onChange);
+  bar.addEventListener('change', onChange);
+  bar.querySelector('.f-clear').addEventListener('click', () => {
+    qEl.value = ''; sEl.value = ''; cEl.value = ''; oEl.value = ''; fEl.value = '';
+    if (rEl) rEl.value = '';
+    localStorage.removeItem(storeKey);
+    apply();
+  });
+  apply();
+}
+initFilters('pending');
+initFilters('reviewed');
 `;
 
 function renderStatusBadge(s) {
@@ -809,7 +900,7 @@ function renderStatusBadge(s) {
 // values. Yellow-highlights the fields that differ.
 function renderDiffRow(sub) {
   if (!sub.current) {
-    return `<tr><td colspan="7" class="diff diff--new"><em>Not in catalog yet — this would be a new entry.</em></td></tr>`;
+    return `<tr data-diff="1"><td colspan="7" class="diff diff--new"><em>Not in catalog yet — this would be a new entry.</em></td></tr>`;
   }
   const cur = sub.current;
   const mark = (changed, text) =>
@@ -831,7 +922,7 @@ function renderDiffRow(sub) {
   ];
   const name = cur.name ? `<strong>${escHtml(cur.name)}</strong> · ` : "";
   const rec = cur.recommended ? ' · <span style="color:#006C49;font-weight:600">★ recommended</span>' : "";
-  return `<tr><td colspan="7" class="diff diff--changed">currently: ${name}${parts.join(" · ")}${rec}</td></tr>`;
+  return `<tr data-diff="1"><td colspan="7" class="diff diff--changed">currently: ${name}${parts.join(" · ")}${rec}</td></tr>`;
 }
 
 function renderRow(sub, showActions) {
@@ -867,6 +958,8 @@ function renderRow(sub, showActions) {
 
   const nameBit = sub.name ? `<span class="row-name">${escHtml(sub.name)}</span> — ` : "";
   const recBit = sub.recommended ? ' <span class="row-rec" title="Recommended">★</span>' : "";
+  const lgBit = sub.login ? ' <span class="flag flag--lg" title="Requires login">login</span>' : "";
+  const abBit = sub.abandoned ? ' <span class="flag flag--ab" title="Abandoned project">abandoned</span>' : "";
   // On pending rows, lead with a NEW / CHANGE pill so approving-on-autopilot
   // can't accidentally overwrite a curated entry.
   const kindBit = showActions && "current" in sub
@@ -875,8 +968,22 @@ function renderRow(sub, showActions) {
         : '<span class="kind kind--new" title="Will add a new row to the catalog">NEW</span>')
     : "";
 
-  const mainRow = `<tr>
-    <td>${kindBit}${nameBit}<a class="row-domain" href="https://${escHtml(sub.domain)}" target="_blank" rel="noopener noreferrer">${escHtml(sub.domain)}</a>${recBit}</td>
+  const rowData = [
+    `data-row="1"`,
+    `data-domain="${escHtml(sub.domain.toLowerCase())}"`,
+    `data-name="${escHtml((sub.name || "").toLowerCase())}"`,
+    `data-note="${escHtml((sub.note || "").toLowerCase())}"`,
+    `data-status="${sub.status}"`,
+    `data-cats="${escHtml(JSON.stringify(cats))}"`,
+    `data-os="${sub.open_source ? 1 : 0}"`,
+    `data-lg="${sub.login ? 1 : 0}"`,
+    `data-ab="${sub.abandoned ? 1 : 0}"`,
+    `data-rec="${sub.recommended ? 1 : 0}"`,
+    `data-review="${escHtml(sub.review || "")}"`,
+  ].join(" ");
+
+  const mainRow = `<tr ${rowData}>
+    <td>${kindBit}${nameBit}<a class="row-domain" href="https://${escHtml(sub.domain)}" target="_blank" rel="noopener noreferrer">${escHtml(sub.domain)}</a>${recBit}${lgBit}${abBit}</td>
     <td>${renderStatusBadge(sub.status)}</td>
     <td>${catsLabel}</td>
     <td>${os}</td>
@@ -888,11 +995,54 @@ function renderRow(sub, showActions) {
   return showActions && "current" in sub ? mainRow + renderDiffRow(sub) : mainRow;
 }
 
+function renderFilterBar(scope) {
+  const catOptions = Object.entries(CATEGORY_LABELS)
+    .map(([v, l]) => `<option value="${v}">${escHtml(l)}</option>`)
+    .join("");
+  const reviewFilter = scope === "reviewed"
+    ? `<select class="f-review">
+         <option value="">Any review</option>
+         <option value="approved">Approved</option>
+         <option value="rejected">Rejected</option>
+       </select>`
+    : "";
+  return `<div class="filters" data-scope="${scope}">
+    <input type="search" class="f-search" placeholder="Search domain, name, or note…">
+    <select class="f-status">
+      <option value="">Any status</option>
+      <option value="1">Free</option>
+      <option value="2">Free with limits</option>
+      <option value="3">Paid</option>
+      <option value="0">Out of scope</option>
+    </select>
+    <select class="f-cat">
+      <option value="">Any category</option>
+      ${catOptions}
+    </select>
+    <select class="f-os">
+      <option value="">Any source</option>
+      <option value="1">Open source</option>
+      <option value="0">Proprietary</option>
+    </select>
+    <select class="f-flag">
+      <option value="">Any flag</option>
+      <option value="rec">★ Recommended</option>
+      <option value="lg">Requires login</option>
+      <option value="ab">Abandoned</option>
+      <option value="none">No flags</option>
+    </select>
+    ${reviewFilter}
+    <button type="button" class="f-clear">Clear</button>
+    <span class="f-count"></span>
+  </div>`;
+}
+
 function renderAdminHTML(pending, reviewed, activeTab) {
   const pendingTab = `
     ${pending.length === 0
       ? '<div class="empty">No pending submissions.</div>'
-      : `<table>
+      : `${renderFilterBar("pending")}
+        <table>
           <thead><tr><th>Domain</th><th>Status</th><th>Category</th><th>OS</th><th>Note</th><th>Submitted</th><th>Actions</th></tr></thead>
           <tbody>${pending.map(s => renderRow(s, true)).join("")}</tbody>
         </table>`}`;
@@ -900,7 +1050,8 @@ function renderAdminHTML(pending, reviewed, activeTab) {
   const reviewedTab = `
     ${reviewed.length === 0
       ? '<div class="empty">No reviewed submissions yet.</div>'
-      : `<table>
+      : `${renderFilterBar("reviewed")}
+        <table>
           <thead><tr><th>Domain</th><th>Status</th><th>Category</th><th>OS</th><th>Note</th><th>Submitted</th><th>Status</th></tr></thead>
           <tbody>${reviewed.map(s => renderRow(s, false)).join("")}</tbody>
         </table>`}`;

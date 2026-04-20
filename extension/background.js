@@ -93,13 +93,18 @@ function getIconPaths(name) {
   };
 }
 
-// Switch the toolbar icon. The badge-text clear is defensive: we don't
-// set badges anywhere (they were dropped because Chrome composites them
-// as opaque over the icon), but upgrading users may have stale badge
-// text from an older build.
-async function setToolbarIcon(tabId, iconName) {
+// Switch the toolbar icon and optionally draw a red "login required" dot.
+// The badge API doesn't expose shape, so we render a filled-circle glyph
+// with matching foreground/background to look like a solid red pill.
+async function setToolbarIcon(tabId, iconName, loginRequired = false) {
   await chrome.action.setIcon({ path: getIconPaths(iconName), tabId });
-  await chrome.action.setBadgeText({ text: "", tabId });
+  if (loginRequired) {
+    await chrome.action.setBadgeBackgroundColor({ color: "#D7263D", tabId });
+    await chrome.action.setBadgeTextColor?.({ color: "#FFFFFF", tabId });
+    await chrome.action.setBadgeText({ text: "L", tabId });
+  } else {
+    await chrome.action.setBadgeText({ text: "", tabId });
+  }
 }
 
 async function updateBadgeForUrl(url, tabId) {
@@ -118,7 +123,7 @@ async function updateBadgeForUrl(url, tabId) {
   // Abandoned overrides the money-axis icon — "don't use this" is the
   // louder signal than whether it's free.
   const iconName = rating.ab ? "abandoned" : (STATUS_ICONS[rating.s] || "default");
-  return setToolbarIcon(tabId, iconName);
+  return setToolbarIcon(tabId, iconName, !!rating.lg);
 }
 
 // ─── Local lookup by domain ───
