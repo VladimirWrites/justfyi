@@ -93,38 +93,32 @@ function getIconPaths(name) {
   };
 }
 
-async function resetBadge(tabId) {
-  await chrome.action.setIcon({ path: getIconPaths("default"), tabId });
+// Switch the toolbar icon. The badge-text clear is defensive: we don't
+// set badges anywhere (they were dropped because Chrome composites them
+// as opaque over the icon), but upgrading users may have stale badge
+// text from an older build.
+async function setToolbarIcon(tabId, iconName) {
+  await chrome.action.setIcon({ path: getIconPaths(iconName), tabId });
   await chrome.action.setBadgeText({ text: "", tabId });
 }
 
 async function updateBadgeForUrl(url, tabId) {
   if (!url.startsWith("http://") && !url.startsWith("https://")) {
-    return resetBadge(tabId);
+    return setToolbarIcon(tabId, "default");
   }
 
   const rating = await lookupRating(normalizeUrl(url));
 
-  // Out of scope (e.g. amazon.com) — explicit "not a tool" verdict, stay neutral.
-  if (rating && rating.s === 0) {
-    return resetBadge(tabId);
-  }
+  // Explicit "not a tool" verdict (e.g. amazon.com) — stay neutral.
+  if (rating && rating.s === 0) return setToolbarIcon(tabId, "default");
 
-  // No entry at all — show the unrated indicator so the user knows they can help.
-  if (!rating) {
-    await chrome.action.setIcon({ path: getIconPaths("unrated"), tabId });
-    await chrome.action.setBadgeText({ text: "", tabId });
-    return;
-  }
+  // No entry — show the unrated indicator so the user knows they can help.
+  if (!rating) return setToolbarIcon(tabId, "unrated");
 
-  // Abandoned overrides the money-axis icon — "don't use this" is the louder signal.
+  // Abandoned overrides the money-axis icon — "don't use this" is the
+  // louder signal than whether it's free.
   const iconName = rating.ab ? "abandoned" : (STATUS_ICONS[rating.s] || "default");
-  await chrome.action.setIcon({ path: getIconPaths(iconName), tabId });
-
-  // The toolbar badge is dropped — Chrome composites badge backgrounds as
-  // effectively opaque, which obscures the status icon. OS status is shown
-  // in the popup instead.
-  await chrome.action.setBadgeText({ text: "", tabId });
+  return setToolbarIcon(tabId, iconName);
 }
 
 // ─── Local lookup by domain ───

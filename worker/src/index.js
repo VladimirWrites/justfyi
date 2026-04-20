@@ -5,16 +5,121 @@
  *   POST /submitRating  — community submissions
  *   POST /subscribe     — newsletter email signup
  *
- * Admin endpoints (protected by Cloudflare Access):
- *   GET  /admin              — review dashboard
- *   POST /admin/approve/:id  — approve submission
- *   POST /admin/reject/:id   — reject submission
+ * Admin endpoints (protected by email + password login):
+ *   GET  /admin              — dashboard (or login form if unauth'd)
+ *   POST /admin/login        — set session cookie
+ *   POST /admin/logout       — clear session cookie
+ *   POST /admin/approve/:id  — approve / edit a submission
+ *   POST /admin/reject/:id   — reject a submission
  *
- * Approved submissions are not auto-published. The maintainer copies them
- * into extension/data/ratings.json by hand and ships a new extension release.
+ * Approved rows are the admin's working copy; the shipping ratings.json
+ * is still updated by hand.
  */
 
-// ─── URL Normalization (keep in sync with extension/background.js) ───
+
+// ───────────────────────────────────────────────────────────
+// Constants
+// ───────────────────────────────────────────────────────────
+
+const VALID_STATUSES = [0, 1, 2, 3];
+const VALID_CATEGORIES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 999];
+
+const STATUS_LABELS = {
+  0: "Out of scope",
+  1: "Free",
+  2: "Free with limits",
+  3: "Paid",
+};
+const STATUS_COLORS = {
+  0: "#6B7280",
+  1: "#006C49",
+  2: "#F59E0B",
+  3: "#9F403D",
+};
+const CATEGORY_LABELS = {
+  1: "PDF", 2: "Image", 3: "Video", 4: "Audio", 5: "AI Generate",
+  6: "Writing", 7: "Dev", 8: "Design", 9: "File Convert",
+  10: "Notes / Docs", 11: "SEO", 12: "Security", 13: "VPN",
+  14: "Browser", 15: "Tasks / Project Mgmt", 16: "Cloud Storage",
+  999: "Other",
+};
+const REVIEW = { PENDING: "pending", APPROVED: "approved", REJECTED: "rejected" };
+
+const RATE_LIMIT_MAX = 5;
+const RATE_LIMIT_WINDOW_S = 3600;
+
+const SESSION_COOKIE = "admin_session";
+const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type",
+};
+
+
+// ───────────────────────────────────────────────────────────
+// Response helpers
+// ───────────────────────────────────────────────────────────
+
+function jsonResponse(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { "Content-Type": "application/json", ...CORS_HEADERS },
+  });
+}
+
+function htmlResponse(html, status = 200) {
+  return new Response(html, {
+    status,
+    headers: { "Content-Type": "text/html;charset=UTF-8" },
+  });
+}
+
+function notFound() {
+  return jsonResponse({ error: "Not found" }, 404);
+}
+
+
+// ───────────────────────────────────────────────────────────
+// Escape / sanitize
+// ───────────────────────────────────────────────────────────
+
+// Escape the 5 characters that matter in either HTML text nodes or
+// attribute values. Safe for both, so we only need one function.
+function escHtml(v) {
+  return String(v ?? "").replace(/[&<>"']/g, c => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  }[c]));
+}
+
+// Strip control chars (incl CR/LF for SMTP-header hygiene), collapse
+// whitespace, trim, and cap length. Returns "" for non-strings.
+function sanitizeText(v, maxLen) {
+  if (typeof v !== "string") return "";
+  // eslint-disable-next-line no-control-regex
+  let s = v.replace(/[\x00-\x1F\x7F]/g, " ");
+  s = s.replace(/\s+/g, " ").trim();
+  if (s.length > maxLen) s = s.slice(0, maxLen);
+  return s;
+}
+
+const EMAIL_RE = /^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$/;
+function parseEmail(v) {
+  if (typeof v !== "string") return null;
+  // eslint-disable-next-line no-control-regex
+  const s = v.replace(/[\x00-\x1F\x7F]/g, "").trim().toLowerCase();
+  if (s.length < 3 || s.length > 254) return null;
+  if (!EMAIL_RE.test(s)) return null;
+  return s;
+}
+
+
+// ───────────────────────────────────────────────────────────
+// URL normalization
+// (duplicated in extension/background.js — keep in sync)
+// ───────────────────────────────────────────────────────────
+
 const MULTI_PART_SUFFIXES = new Set([
   "co.uk", "org.uk", "ac.uk", "gov.uk", "me.uk", "net.uk",
   "co.jp", "ne.jp", "or.jp", "ac.jp",
@@ -26,8 +131,7 @@ const MULTI_PART_SUFFIXES = new Set([
 ]);
 
 function normalizeUrl(url) {
-  let host = url.trim().toLowerCase();
-  host = host.replace(/^https?:\/\//, "");
+  let host = url.trim().toLowerCase().replace(/^https?:\/\//, "");
   const endIdx = host.search(/[/?#:]/);
   if (endIdx !== -1) host = host.substring(0, endIdx);
 
@@ -37,71 +141,13 @@ function normalizeUrl(url) {
   return MULTI_PART_SUFFIXES.has(last2) ? parts.slice(-3).join(".") : last2;
 }
 
-const VALID_STATUSES = [0, 1, 2, 3];
-const VALID_CATEGORIES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 999];
-const STATUS_LABELS = { 0: "Out of scope", 1: "Free", 2: "Free with limits", 3: "Paid" };
-const CATEGORY_LABELS = { 1: "PDF", 2: "Image", 3: "Video", 4: "Audio", 5: "AI Generate", 6: "Writing", 7: "Dev", 8: "Design", 9: "File Convert", 10: "Notes / Docs", 11: "SEO", 12: "Security", 13: "VPN", 14: "Browser", 15: "Tasks / Project Mgmt", 16: "Cloud Storage", 999: "Other" };
-const REVIEW = { PENDING: "pending", APPROVED: "approved", REJECTED: "rejected" };
-const RATE_LIMIT_MAX = 5;
-const RATE_LIMIT_WINDOW_S = 3600;
 
-const CORS_HEADERS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
-};
+// ───────────────────────────────────────────────────────────
+// Rate limiting — IP-based, stored in rate_limits table.
+// Each call opportunistically purges rows older than the window,
+// so IPs never linger as PII.
+// ───────────────────────────────────────────────────────────
 
-function jsonResponse(data, status = 200) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { "Content-Type": "application/json", ...CORS_HEADERS },
-  });
-}
-
-// ─── Input sanitisation ───
-// Strip control characters (including CR/LF for SMTP injection hygiene),
-// collapse internal whitespace, trim, and cap length. Returns empty string
-// for non-string input.
-function sanitizeText(v, maxLen) {
-  if (typeof v !== "string") return "";
-  // eslint-disable-next-line no-control-regex
-  let s = v.replace(/[\x00-\x1F\x7F]/g, " ");  // control chars → space
-  s = s.replace(/\s+/g, " ").trim();
-  if (s.length > maxLen) s = s.slice(0, maxLen);
-  return s;
-}
-
-// Escape text going into HTML text nodes or attributes so user-supplied
-// strings (notes, names, domains) can't break out of the document.
-function escHtml(v) {
-  return String(v ?? "").replace(/[&<>"']/g, c => ({
-    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
-  }[c]));
-}
-
-// Stricter email shape check + length cap + no control chars.
-const EMAIL_RE = /^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$/;
-function parseEmail(v) {
-  if (typeof v !== "string") return null;
-  const s = v.replace(/[\x00-\x1F\x7F]/g, "").trim().toLowerCase();
-  if (s.length < 3 || s.length > 254) return null;
-  if (!EMAIL_RE.test(s)) return null;
-  return s;
-}
-
-// IP-based rate limit backed by the rate_limits table. Each call opportunistically
-// purges rows older than RATE_LIMIT_WINDOW_S, so IPs never linger as PII.
-
-// Check-and-record: returns true if over limit, otherwise records a new row.
-// Used by /submitRating and /subscribe where every successful request counts.
-async function isRateLimited(env, ip) {
-  if (await checkRateLimit(env, ip)) return true;
-  await recordRateLimit(env, ip);
-  return false;
-}
-
-// Just check without recording. Used by /admin/login so successful logins
-// don't consume slots — only failed attempts are recorded.
 async function checkRateLimit(env, ip) {
   await env.DB.prepare(
     "DELETE FROM rate_limits WHERE created_at < datetime('now', ?)"
@@ -118,22 +164,23 @@ async function recordRateLimit(env, ip) {
   ).bind(ip).run();
 }
 
-function htmlResponse(html, status = 200) {
-  return new Response(html, {
-    status,
-    headers: { "Content-Type": "text/html;charset=UTF-8" },
-  });
+// Check + record. Used by /submitRating and /subscribe where every
+// successful request counts. /admin/login uses checkRateLimit +
+// recordRateLimit separately so successful logins don't burn slots.
+async function isRateLimited(env, ip) {
+  if (await checkRateLimit(env, ip)) return true;
+  await recordRateLimit(env, ip);
+  return false;
 }
 
-// ─── Admin auth ───
-// Credentials live in two worker secrets: ADMIN_EMAIL and ADMIN_PASSWORD.
-// Access is granted only through the login form (POST /admin/login) that
-// sets a stateless session cookie. The cookie value is
-//    <expiryMs>.<hexHmacSha256(ADMIN_PASSWORD, expiryMs + ":" + ADMIN_EMAIL)>
-// which means we do not store sessions server-side and the cookie cannot
-// be forged without the password.
-const SESSION_COOKIE = "admin_session";
-const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+// ───────────────────────────────────────────────────────────
+// Admin auth — stateless HMAC-signed session cookie.
+// Credentials live in ADMIN_EMAIL and ADMIN_PASSWORD secrets.
+// Cookie value is  <expiryMs>.<hex HMAC-SHA256(ADMIN_PASSWORD, expiryMs + ":" + ADMIN_EMAIL)>
+// — no server-side session storage, and the cookie can't be forged
+// without the password.
+// ───────────────────────────────────────────────────────────
 
 function readCookie(request, name) {
   const header = request.headers.get("cookie") || "";
@@ -180,52 +227,226 @@ async function isAdmin(request, env) {
   return timingSafeEqual(expected, cookie);
 }
 
+// Shared cookie attributes for set + clear responses.
+function sessionCookie(value, maxAgeSeconds) {
+  return `${SESSION_COOKIE}=${value}; Path=/admin; Secure; HttpOnly; SameSite=Strict; Max-Age=${maxAgeSeconds}`;
+}
+
+
+// ───────────────────────────────────────────────────────────
+// Public handlers
+// ───────────────────────────────────────────────────────────
+
+async function handleSubmitRating(request, env) {
+  let body;
+  try { body = await request.json(); }
+  catch { return jsonResponse({ error: "Invalid JSON body." }, 400); }
+
+  const { domain, status, category, openSource, login, abandoned, note } = body;
+
+  if (!domain || typeof domain !== "string" || domain.trim().length === 0)
+    return jsonResponse({ error: "domain is required." }, 400);
+  if (!VALID_STATUSES.includes(status))
+    return jsonResponse({ error: "status must be 0-3." }, 400);
+
+  // Out-of-scope entries don't carry category/flags
+  if (status !== 0) {
+    if (!VALID_CATEGORIES.includes(category))
+      return jsonResponse({ error: "category is invalid." }, 400);
+    if (typeof openSource !== "boolean")
+      return jsonResponse({ error: "openSource must be a boolean." }, 400);
+    if (login !== undefined && typeof login !== "boolean")
+      return jsonResponse({ error: "login must be a boolean." }, 400);
+    if (abandoned !== undefined && typeof abandoned !== "boolean")
+      return jsonResponse({ error: "abandoned must be a boolean." }, 400);
+  }
+
+  const ip = request.headers.get("cf-connecting-ip") || "unknown";
+  if (await isRateLimited(env, ip))
+    return jsonResponse({ error: "Rate limit exceeded. Try again later." }, 429);
+
+  // Community submissions never set "recommended" or "name" — those
+  // are curation choices the admin makes after review.
+  await env.DB.prepare(
+    `INSERT INTO submissions (domain, status, category, open_source, login, abandoned, recommended, name, note, submitted_at)
+     VALUES (?, ?, ?, ?, ?, ?, 0, NULL, ?, datetime('now'))`
+  ).bind(
+    normalizeUrl(domain), status,
+    status === 0 ? 0 : category,
+    openSource ? 1 : 0,
+    login ? 1 : 0,
+    abandoned ? 1 : 0,
+    sanitizeText(note, 200)
+  ).run();
+
+  return jsonResponse({ success: true });
+}
+
+async function handleSubscribe(request, env) {
+  let body;
+  try { body = await request.json(); }
+  catch { return jsonResponse({ error: "Invalid JSON body." }, 400); }
+
+  const email = parseEmail(body.email);
+  if (!email) return jsonResponse({ error: "Enter a valid email address." }, 400);
+
+  const ip = request.headers.get("cf-connecting-ip") || "unknown";
+  if (await isRateLimited(env, ip))
+    return jsonResponse({ error: "Rate limit exceeded. Try again later." }, 429);
+
+  // INSERT OR IGNORE so a repeat signup is a silent no-op — avoids
+  // leaking whether the address was already on the list.
+  await env.DB.prepare(
+    "INSERT OR IGNORE INTO subscribers (email, subscribed_at) VALUES (?, datetime('now'))"
+  ).bind(email).run();
+
+  return jsonResponse({ success: true });
+}
+
+
+// ───────────────────────────────────────────────────────────
+// Admin handlers
+// ───────────────────────────────────────────────────────────
+
 async function handleAdminLogin(request, env) {
   const ip = request.headers.get("cf-connecting-ip") || "unknown";
-  if (await checkRateLimit(env, ip)) {
+  if (await checkRateLimit(env, ip))
     return htmlResponse(renderLoginHTML("Too many failed attempts. Try again in an hour."), 429);
-  }
+
   const form = await request.formData().catch(() => null);
   // Normalise login fields the same way submissions are cleaned so a
-  // stray newline, null byte, or 5 MB of junk can't reach the compare.
+  // stray newline, null byte, or a few MB of junk can't reach compare.
   const rawEmail = form && form.get("email") ? String(form.get("email")) : "";
+  // eslint-disable-next-line no-control-regex
   const email = rawEmail.replace(/[\x00-\x1F\x7F]/g, "").trim().toLowerCase().slice(0, 254);
   const rawPw = form && form.get("password") ? String(form.get("password")) : "";
+  // eslint-disable-next-line no-control-regex
   const password = rawPw.replace(/[\x00-\x1F\x7F]/g, "").slice(0, 256);
+
   const goodEmail = env.ADMIN_EMAIL && timingSafeEqual(email, env.ADMIN_EMAIL.toLowerCase());
   const goodPass = env.ADMIN_PASSWORD && timingSafeEqual(password, env.ADMIN_PASSWORD);
   if (!goodEmail || !goodPass) {
-    // Only record a rate-limit row when the attempt is wrong so a
-    // legitimate user logging in (or out and back in) doesn't burn slots.
+    // Only wrong attempts cost a rate-limit slot.
     await recordRateLimit(env, ip);
     return htmlResponse(renderLoginHTML("Wrong email or password."), 401);
   }
+
   const expiry = Date.now() + SESSION_TTL_MS;
   const token = await signSession(env, expiry);
   return new Response(null, {
     status: 302,
     headers: {
       "Location": "/admin",
-      "Set-Cookie": `${SESSION_COOKIE}=${token}; Path=/admin; Secure; HttpOnly; SameSite=Strict; Max-Age=${Math.floor(SESSION_TTL_MS/1000)}`,
+      "Set-Cookie": sessionCookie(token, Math.floor(SESSION_TTL_MS / 1000)),
     },
   });
 }
 
-function notFound() {
-  return jsonResponse({ error: "Not found" }, 404);
+function handleAdminLogout() {
+  return new Response(null, {
+    status: 302,
+    headers: {
+      "Location": "/admin",
+      "Set-Cookie": sessionCookie("", 0),
+    },
+  });
 }
 
-function renderLoginHTML(error) {
-  const errHtml = error
-    ? `<div class="err">${error.replace(/[<>&]/g, c => ({ "<":"&lt;", ">":"&gt;", "&":"&amp;" }[c]))}</div>`
-    : "";
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>JustFYI Admin — Sign in</title>
-<style>
+async function handleAdminPage(url, env) {
+  const tab = url.searchParams.get("tab") || REVIEW.PENDING;
+
+  const [pending, recent] = await Promise.all([
+    env.DB.prepare(
+      "SELECT * FROM submissions WHERE review = ? ORDER BY submitted_at DESC"
+    ).bind(REVIEW.PENDING).all(),
+    // No LIMIT — approved rows are the full catalog, the admin needs
+    // to see all of them. Sorted for stable browsing.
+    env.DB.prepare(
+      "SELECT * FROM submissions WHERE review != ? ORDER BY review ASC, category ASC, domain ASC"
+    ).bind(REVIEW.PENDING).all(),
+  ]);
+
+  const pendingWithCurrent = await attachCurrentApproved(env, pending.results);
+  return htmlResponse(renderAdminHTML(pendingWithCurrent, recent.results, tab));
+}
+
+// For each pending submission, look up the most recent approved row
+// for the same domain so the diff view can show what would change.
+async function attachCurrentApproved(env, pendingRows) {
+  if (!pendingRows.length) return pendingRows.map(s => ({ ...s, current: null }));
+
+  const domains = pendingRows.map(s => s.domain);
+  const placeholders = domains.map(() => "?").join(",");
+  const { results } = await env.DB.prepare(
+    `SELECT s.* FROM submissions s
+     JOIN (
+       SELECT domain, MAX(id) AS max_id
+       FROM submissions
+       WHERE review = 'approved' AND domain IN (${placeholders})
+       GROUP BY domain
+     ) latest ON s.id = latest.max_id`
+  ).bind(...domains).all();
+  const byDomain = new Map(results.map(r => [r.domain, r]));
+
+  return pendingRows.map(s => ({ ...s, current: byDomain.get(s.domain) || null }));
+}
+
+async function handleApprove(path, request, env) {
+  const id = path.split("/").pop();
+
+  let body = {};
+  try { body = await request.json(); } catch {}
+
+  const sub = await env.DB.prepare("SELECT * FROM submissions WHERE id = ?").bind(id).first();
+  if (!sub) return notFound();
+
+  // Pick each field from the request body, falling back to whatever
+  // was stored on the submission row.
+  const asInt01 = v => (v ? 1 : 0);
+  const pick = (key, fallback, transform = v => v) =>
+    body[key] !== undefined ? transform(body[key]) : fallback;
+
+  const finalStatus = pick("status", sub.status);
+  const finalCat = pick("category", sub.category);
+  const finalOs = pick("openSource", sub.open_source, asInt01);
+  const finalLogin = pick("login", sub.login, asInt01);
+  const finalAbandoned = pick("abandoned", sub.abandoned, asInt01);
+  const finalRec = pick("recommended", sub.recommended, asInt01);
+
+  // Curation name: "" or whitespace-only clears the field; otherwise
+  // clean and cap at 80 chars.
+  let finalName = sub.name;
+  if (body.name !== undefined) {
+    const cleaned = sanitizeText(body.name, 80);
+    finalName = cleaned.length ? cleaned : null;
+  }
+
+  await env.DB.prepare(
+    `UPDATE submissions
+       SET review = ?, status = ?, category = ?, open_source = ?,
+           login = ?, abandoned = ?, recommended = ?, name = ?
+     WHERE id = ?`
+  ).bind(
+    REVIEW.APPROVED, finalStatus, finalCat, finalOs,
+    finalLogin, finalAbandoned, finalRec, finalName, id
+  ).run();
+
+  return jsonResponse({ success: true });
+}
+
+async function handleReject(path, env) {
+  const id = path.split("/").pop();
+  await env.DB.prepare("UPDATE submissions SET review = ? WHERE id = ?")
+    .bind(REVIEW.REJECTED, id).run();
+  return jsonResponse({ success: true });
+}
+
+
+// ───────────────────────────────────────────────────────────
+// HTML templates
+// ───────────────────────────────────────────────────────────
+
+const LOGIN_CSS = `
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
     font-family: -apple-system, system-ui, sans-serif;
@@ -259,7 +480,17 @@ function renderLoginHTML(error) {
     background: rgba(159,64,61,0.08); padding: 10px 12px; border-radius: 8px;
     margin-bottom: 16px;
   }
-</style>
+`;
+
+function renderLoginHTML(error) {
+  const errHtml = error ? `<div class="err">${escHtml(error)}</div>` : "";
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>JustFYI Admin — Sign in</title>
+<style>${LOGIN_CSS}</style>
 </head>
 <body>
 <form class="card" method="POST" action="/admin/login" autocomplete="off">
@@ -276,304 +507,12 @@ function renderLoginHTML(error) {
 </html>`;
 }
 
-// ─── Router ───
-export default {
-  async fetch(request, env) {
-    if (request.method === "OPTIONS") {
-      return new Response(null, { status: 204, headers: CORS_HEADERS });
-    }
-
-    const url = new URL(request.url);
-    const path = url.pathname;
-
-    // Public
-    if (path === "/submitRating" && request.method === "POST") return handleSubmitRating(request, env);
-    if (path === "/subscribe" && request.method === "POST") return handleSubscribe(request, env);
-
-    // Admin — gated by session cookie set via the login form.
-    if (path === "/admin" || path.startsWith("/admin/")) {
-      if (path === "/admin/login" && request.method === "POST") {
-        return handleAdminLogin(request, env);
-      }
-      if (path === "/admin/logout" && request.method === "POST") {
-        return new Response(null, {
-          status: 302,
-          headers: {
-            "Location": "/admin",
-            "Set-Cookie": `${SESSION_COOKIE}=; Path=/admin; Secure; HttpOnly; SameSite=Strict; Max-Age=0`,
-          },
-        });
-      }
-      // Unauthenticated GET /admin shows the login page. Everything
-      // else under /admin/* stays invisible (404) until auth'd.
-      if (!(await isAdmin(request, env))) {
-        if (path === "/admin" && request.method === "GET") {
-          return htmlResponse(renderLoginHTML(null));
-        }
-        return notFound();
-      }
-      if (path === "/admin" && request.method === "GET") return handleAdminPage(url, env);
-      if (path.startsWith("/admin/approve/") && request.method === "POST") return handleApprove(path, request, env);
-      if (path.startsWith("/admin/reject/") && request.method === "POST") return handleReject(path, env);
-    }
-
-    return jsonResponse({ error: "Not found" }, 404);
-  },
-};
-
-// ═══════════════════════════════════════════
-// Public: POST /submitRating
-// ═══════════════════════════════════════════
-async function handleSubmitRating(request, env) {
-  let body;
-  try { body = await request.json(); } catch { return jsonResponse({ error: "Invalid JSON body." }, 400); }
-
-  const { domain, status, category, openSource, login, abandoned, note } = body;
-
-  if (!domain || typeof domain !== "string" || domain.trim().length === 0)
-    return jsonResponse({ error: "domain is required." }, 400);
-  if (!VALID_STATUSES.includes(status))
-    return jsonResponse({ error: "status must be 0-3." }, 400);
-  // Out-of-scope entries don't carry category/flags
-  if (status !== 0) {
-    if (!VALID_CATEGORIES.includes(category))
-      return jsonResponse({ error: "category is invalid." }, 400);
-    if (typeof openSource !== "boolean")
-      return jsonResponse({ error: "openSource must be a boolean." }, 400);
-    if (login !== undefined && typeof login !== "boolean")
-      return jsonResponse({ error: "login must be a boolean." }, 400);
-    if (abandoned !== undefined && typeof abandoned !== "boolean")
-      return jsonResponse({ error: "abandoned must be a boolean." }, 400);
-  }
-
-  const ip = request.headers.get("cf-connecting-ip") || "unknown";
-  if (await isRateLimited(env, ip))
-    return jsonResponse({ error: "Rate limit exceeded. Try again later." }, 429);
-
-  // Community submissions never set "recommended" or "name" — those are
-  // curation choices the admin makes after review.
-  await env.DB.prepare(
-    `INSERT INTO submissions (domain, status, category, open_source, login, abandoned, recommended, name, note, submitted_at)
-     VALUES (?, ?, ?, ?, ?, ?, 0, NULL, ?, datetime('now'))`
-  ).bind(
-    normalizeUrl(domain), status,
-    status === 0 ? 0 : category,
-    openSource ? 1 : 0,
-    login ? 1 : 0,
-    abandoned ? 1 : 0,
-    sanitizeText(note, 200)
-  ).run();
-
-  return jsonResponse({ success: true });
-}
-
-// ═══════════════════════════════════════════
-// Admin: GET /admin
-// ═══════════════════════════════════════════
-async function handleAdminPage(url, env) {
-  const tab = url.searchParams.get("tab") || REVIEW.PENDING;
-
-  const [pending, recent] = await Promise.all([
-    env.DB.prepare("SELECT * FROM submissions WHERE review = ? ORDER BY submitted_at DESC").bind(REVIEW.PENDING).all(),
-    // No LIMIT — approved rows are the full catalog, the admin needs to see all of them.
-    env.DB.prepare("SELECT * FROM submissions WHERE review != ? ORDER BY review ASC, category ASC, domain ASC").bind(REVIEW.PENDING).all(),
-  ]);
-
-  // Attach the latest approved row for each pending submission so the
-  // reviewer can see what's actually changing. One query fetches the
-  // most recent approved row per distinct domain across all pending.
-  const pendingDomains = pending.results.map(s => s.domain);
-  let currentByDomain = new Map();
-  if (pendingDomains.length) {
-    const placeholders = pendingDomains.map(() => "?").join(",");
-    const { results: approvedRows } = await env.DB.prepare(
-      `SELECT s.* FROM submissions s
-       JOIN (
-         SELECT domain, MAX(id) AS max_id
-         FROM submissions
-         WHERE review = 'approved' AND domain IN (${placeholders})
-         GROUP BY domain
-       ) latest ON s.id = latest.max_id`
-    ).bind(...pendingDomains).all();
-    currentByDomain = new Map(approvedRows.map(r => [r.domain, r]));
-  }
-  const pendingWithCurrent = pending.results.map(s => ({
-    ...s,
-    current: currentByDomain.get(s.domain) || null,
-  }));
-
-  return htmlResponse(renderAdminHTML(pendingWithCurrent, recent.results, tab));
-}
-
-// ═══════════════════════════════════════════
-// Public: POST /subscribe
-// ═══════════════════════════════════════════
-async function handleSubscribe(request, env) {
-  let body;
-  try { body = await request.json(); } catch { return jsonResponse({ error: "Invalid JSON body." }, 400); }
-
-  const email = parseEmail(body.email);
-  if (!email) {
-    return jsonResponse({ error: "Enter a valid email address." }, 400);
-  }
-
-  const ip = request.headers.get("cf-connecting-ip") || "unknown";
-  if (await isRateLimited(env, ip))
-    return jsonResponse({ error: "Rate limit exceeded. Try again later." }, 429);
-
-  // INSERT OR IGNORE so a repeat signup is a silent no-op — avoids leaking
-  // whether the address was already on the list.
-  await env.DB.prepare(
-    "INSERT OR IGNORE INTO subscribers (email, subscribed_at) VALUES (?, datetime('now'))"
-  ).bind(email).run();
-
-  return jsonResponse({ success: true });
-}
-
-// ═══════════════════════════════════════════
-// Admin: POST /admin/approve/:id
-// ═══════════════════════════════════════════
-async function handleApprove(path, request, env) {
-  const id = path.split("/").pop();
-
-  let body = {};
-  try { body = await request.json(); } catch {}
-
-  const overrideStatus = body.status;
-  const overrideCat = body.category;
-  const openSource = body.openSource;
-
-  const sub = await env.DB.prepare("SELECT * FROM submissions WHERE id = ?").bind(id).first();
-  if (!sub) return jsonResponse({ error: "Not found" }, 404);
-
-  const finalStatus = overrideStatus !== undefined ? overrideStatus : sub.status;
-  const finalCat = overrideCat !== undefined ? overrideCat : sub.category;
-  const finalOs = openSource !== undefined ? (openSource ? 1 : 0) : sub.open_source;
-  const finalLogin = body.login !== undefined ? (body.login ? 1 : 0) : sub.login;
-  const finalAbandoned = body.abandoned !== undefined ? (body.abandoned ? 1 : 0) : sub.abandoned;
-  // Curation fields: carry over whatever was on the row by default.
-  // The admin can override by passing `name` (string, or empty to clear)
-  // and `recommended` (bool) in the approve payload.
-  let finalName = sub.name;
-  if (body.name !== undefined) {
-    const cleaned = sanitizeText(body.name, 80);
-    finalName = cleaned.length ? cleaned : null;
-  }
-  const finalRec = body.recommended !== undefined ? (body.recommended ? 1 : 0) : sub.recommended;
-
-  await env.DB.prepare(
-    `UPDATE submissions
-       SET review = ?, status = ?, category = ?, open_source = ?,
-           login = ?, abandoned = ?, recommended = ?, name = ?
-     WHERE id = ?`
-  ).bind(REVIEW.APPROVED, finalStatus, finalCat, finalOs, finalLogin, finalAbandoned, finalRec, finalName, id).run();
-
-  return jsonResponse({ success: true });
-}
-
-// ═══════════════════════════════════════════
-// Admin: POST /admin/reject/:id
-// ═══════════════════════════════════════════
-async function handleReject(path, env) {
-  const id = path.split("/").pop();
-  await env.DB.prepare("UPDATE submissions SET review = ? WHERE id = ?").bind(REVIEW.REJECTED, id).run();
-  return jsonResponse({ success: true });
-}
-
-// ═══════════════════════════════════════════
-// Admin HTML
-// ═══════════════════════════════════════════
-function renderAdminHTML(pending, reviewed, activeTab) {
-  function statusBadge(s) {
-    const colors = { 1: "#006C49", 2: "#F59E0B", 3: "#005BC4", 4: "#9F403D", 5: "#6B7280" };
-    return `<span style="background:${colors[s] || "#666"};color:#fff;padding:2px 8px;border-radius:100px;font-size:11px;font-weight:600">${STATUS_LABELS[s] || s}</span>`;
-  }
-
-  // Mini diff line: for a pending submission whose domain already has an
-  // approved row, render a second row under it showing the current
-  // values. Any field that differs is highlighted.
-  function renderCurrentDiff(sub) {
-    if (!sub.current) {
-      return `<tr><td colspan="7" style="padding:4px 14px 10px 30px;font-size:12px;color:#9AA0A6;background:#FAFBFD">
-        <em>Not in catalog yet — this would be a new entry.</em>
-      </td></tr>`;
-    }
-    const cur = sub.current;
-    const mark = (changed, text) =>
-      changed
-        ? `<span style="background:#FFF3BF;padding:1px 6px;border-radius:4px;font-weight:600">${text}</span>`
-        : text;
-
-    const parts = [
-      mark(cur.status !== sub.status, `status ${STATUS_LABELS[cur.status] || cur.status}`),
-      mark(cur.category !== sub.category, `cat ${CATEGORY_LABELS[cur.category] || cur.category || "—"}`),
-      mark(cur.open_source !== sub.open_source, `OS:${cur.open_source ? "yes" : "no"}`),
-      mark(cur.login !== sub.login, `login:${cur.login ? "yes" : "no"}`),
-      mark(cur.abandoned !== sub.abandoned, `abandoned:${cur.abandoned ? "yes" : "no"}`),
-    ];
-    const name = cur.name ? `<strong>${escHtml(cur.name)}</strong> · ` : "";
-    const rec = cur.recommended ? ` · <span style="color:#006C49;font-weight:600">★ recommended</span>` : "";
-    return `<tr><td colspan="7" style="padding:4px 14px 10px 30px;font-size:12px;color:#5A6061;background:#FAFBFD">
-      currently: ${name}${parts.join(" · ")}${rec}
-    </td></tr>`;
-  }
-
-  const escAttr = s => String(s ?? "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-
-  function renderRow(sub, showActions) {
-    const os = sub.open_source ? "Yes" : "No";
-    const btn = (label, onclick, bg) =>
-      `<button onclick="${onclick}" style="background:${bg};color:#fff;border:none;padding:6px 14px;border-radius:100px;font-size:12px;font-weight:600;cursor:pointer;margin-right:4px">${label}</button>`;
-
-    // Data attributes let the edit dialog read the row's current values
-    // (name, rec) without relying on global JS maps.
-    const openEditCall = (title) =>
-      `openEdit(this, '${escAttr(title)}')`;
-    const editAttrs =
-      `data-id="${sub.id}" data-name="${escAttr(sub.name || "")}" data-rec="${sub.recommended ? 1 : 0}"`;
-
-    const actions = showActions ? `
-      <td style="white-space:nowrap">
-        ${btn("Approve", `approve(${sub.id})`, "#006C49")}
-        <button ${editAttrs} onclick="${openEditCall('Approve + edit')}" style="background:#005BC4;color:#fff;border:none;padding:6px 14px;border-radius:100px;font-size:12px;font-weight:600;cursor:pointer;margin-right:4px">Approve + edit</button>
-        ${btn("Reject", `reject(${sub.id})`, "#9F403D")}
-      </td>`
-      : `<td style="white-space:nowrap">
-          <span style="padding:2px 8px;border-radius:100px;font-size:11px;font-weight:600;background:${sub.review === REVIEW.APPROVED ? '#E8F5E9' : '#FFEBEE'};color:${sub.review === REVIEW.APPROVED ? '#2E7D32' : '#C62828'};margin-right:8px">${sub.review}</span>
-          ${sub.review === REVIEW.APPROVED
-            ? `<button ${editAttrs} onclick="${openEditCall('Edit entry')}" style="background:#005BC4;color:#fff;border:none;padding:6px 14px;border-radius:100px;font-size:12px;font-weight:600;cursor:pointer">Edit</button>`
-            : ""}
-        </td>`;
-
-    const nameBit = sub.name ? `<strong>${escHtml(sub.name)}</strong> — ` : "";
-    const recBit = sub.recommended ? ' <span style="color:#006C49" title="Recommended">★</span>' : "";
-
-    const mainRow = `<tr>
-      <td>${nameBit}<span style="font-weight:500">${escHtml(sub.domain)}</span>${recBit}</td>
-      <td>${statusBadge(sub.status)}</td>
-      <td>${CATEGORY_LABELS[sub.category] || escHtml(sub.category)}</td>
-      <td>${os}</td>
-      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${sub.note ? escHtml(sub.note) : "-"}</td>
-      <td style="font-size:12px;color:#666">${sub.submitted_at}</td>
-      ${actions}
-    </tr>`;
-    // Diff row is only shown for pending submissions (showActions) where
-    // we actually fetched `current`. Reviewed rows skip it.
-    return showActions && "current" in sub ? mainRow + renderCurrentDiff(sub) : mainRow;
-  }
-
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>JustFYI Admin</title>
-<style>
+const ADMIN_CSS = `
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: Inter, system-ui, sans-serif; background: #FAFAFA; color: #1C1B1F; }
   .header { background: #fff; border-bottom: 1px solid #E0E0E0; padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; }
   .header h1 { font-size: 18px; font-weight: 700; }
-  .stats { display: flex; gap: 24px; font-size: 13px; color: #666; }
+  .stats { display: flex; gap: 24px; align-items: center; font-size: 13px; color: #666; }
   .stats strong { color: #1C1B1F; }
   .tabs { display: flex; gap: 0; border-bottom: 1px solid #E0E0E0; background: #fff; padding: 0 24px; }
   .tab { padding: 12px 20px; font-size: 13px; font-weight: 600; color: #666; cursor: pointer; border-bottom: 2px solid transparent; text-decoration: none; }
@@ -584,102 +523,62 @@ function renderAdminHTML(pending, reviewed, activeTab) {
   td { padding: 10px 14px; font-size: 13px; border-bottom: 1px solid #F0F0F0; }
   tr:last-child td { border-bottom: none; }
   .empty { text-align: center; padding: 48px; color: #999; font-size: 14px; }
+
+  /* Pill buttons */
+  .btn { border: none; padding: 6px 14px; border-radius: 100px; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; margin-right: 4px; color: #fff; }
+  .btn--approve { background: #006C49; }
+  .btn--edit { background: #005BC4; }
+  .btn--reject { background: #9F403D; }
+  .btn--ghost { background: transparent; border: 1px solid #CAC4D0; color: #49454F; margin: 0; }
+
+  /* Status / review badges */
+  .status-badge { display: inline-block; color: #fff; padding: 2px 8px; border-radius: 100px; font-size: 11px; font-weight: 600; }
+  .review-badge { padding: 2px 8px; border-radius: 100px; font-size: 11px; font-weight: 600; margin-right: 8px; }
+  .review-badge--approved { background: #E8F5E9; color: #2E7D32; }
+  .review-badge--rejected { background: #FFEBEE; color: #C62828; }
+
+  /* Pending diff subrow */
+  .diff { padding: 4px 14px 10px 30px; font-size: 12px; background: #FAFBFD; }
+  .diff--new { color: #9AA0A6; }
+  .diff--changed { color: #5A6061; }
+  .diff-mark { background: #FFF3BF; padding: 1px 6px; border-radius: 4px; font-weight: 600; }
+
+  /* Name / rec indicator in the domain cell */
+  .row-name { font-weight: 700; }
+  .row-rec  { color: #006C49; }
+  .row-domain { font-weight: 500; }
+
   #toast { position: fixed; bottom: 24px; right: 24px; background: #1C1B1F; color: #fff; padding: 10px 20px; border-radius: 8px; font-size: 13px; display: none; z-index: 100; }
 
-  /* Edit dialog — native <dialog> default positioning varies by browser
+  /* Edit dialog — native <dialog> default positioning varies by browser,
      so pin the centering explicitly. */
   dialog#edit-dialog {
     width: 420px; max-width: 90vw; border: none; border-radius: 16px;
     padding: 0; box-shadow: 0 20px 50px rgba(0,0,0,0.18);
-    position: fixed;
-    top: 50%; left: 50%;
-    transform: translate(-50%, -50%);
-    margin: 0;
+    position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); margin: 0;
   }
   dialog#edit-dialog::backdrop { background: rgba(0,0,0,0.4); }
   dialog#edit-dialog form { padding: 24px; }
-  dialog#edit-dialog h3 {
-    font-size: 16px; font-weight: 700; margin-bottom: 4px;
-  }
-  dialog#edit-dialog .sub {
-    font-size: 12px; color: #666; margin-bottom: 20px;
-  }
-  dialog#edit-dialog label.field {
-    display: block; font-size: 12px; font-weight: 600; color: #444; margin: 14px 0 6px;
-  }
+  dialog#edit-dialog h3 { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
+  dialog#edit-dialog .sub { font-size: 12px; color: #666; margin-bottom: 20px; }
+  dialog#edit-dialog label.field { display: block; font-size: 12px; font-weight: 600; color: #444; margin: 14px 0 6px; }
   dialog#edit-dialog input[type=text] {
     width: 100%; font: inherit; font-size: 14px;
     padding: 10px 12px; border: 1px solid #D0D0D0; border-radius: 8px;
     background: #fff; color: #1C1B1F;
   }
-  dialog#edit-dialog input[type=text]:focus {
-    outline: none; border-color: #006C49; box-shadow: 0 0 0 3px rgba(0,108,73,0.15);
-  }
-  dialog#edit-dialog label.check {
-    display: flex; align-items: center; gap: 8px; font-size: 14px;
-    margin: 18px 0 4px; cursor: pointer;
-  }
-  dialog#edit-dialog .actions {
-    display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px;
-  }
-  dialog#edit-dialog button {
-    padding: 9px 18px; border-radius: 100px; font: inherit; font-size: 13px;
-    font-weight: 600; cursor: pointer;
-  }
+  dialog#edit-dialog input[type=text]:focus { outline: none; border-color: #006C49; box-shadow: 0 0 0 3px rgba(0,108,73,0.15); }
+  dialog#edit-dialog label.check { display: flex; align-items: center; gap: 8px; font-size: 14px; margin: 18px 0 4px; cursor: pointer; }
+  dialog#edit-dialog .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+  dialog#edit-dialog button { padding: 9px 18px; border-radius: 100px; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
   dialog#edit-dialog .btn-cancel { background: #fff; border: 1px solid #CAC4D0; color: #49454F; }
   dialog#edit-dialog .btn-save   { background: #006C49; border: none; color: #fff; }
   dialog#edit-dialog .btn-save:hover { background: #005A3C; }
-</style>
-</head>
-<body>
-<div class="header">
-  <h1>JustFYI Admin</h1>
-  <div class="stats">
-    <span><strong>${pending.length}</strong> pending</span>
-    <form method="POST" action="/admin/logout" style="display:inline">
-      <button type="submit" style="background:transparent;border:1px solid #CAC4D0;padding:6px 14px;border-radius:100px;font-size:12px;font-weight:600;cursor:pointer;color:#49454F">Sign out</button>
-    </form>
-  </div>
-</div>
-<div class="tabs">
-  <a class="tab ${activeTab === REVIEW.PENDING ? 'active' : ''}" href="/admin?tab=pending">Pending (${pending.length})</a>
-  <a class="tab ${activeTab === 'reviewed' ? 'active' : ''}" href="/admin?tab=reviewed">Reviewed</a>
-</div>
-<div class="content">
-${activeTab === REVIEW.PENDING ? `
-  ${pending.length === 0 ? '<div class="empty">No pending submissions.</div>' : `
-  <table>
-    <thead><tr><th>Domain</th><th>Status</th><th>Category</th><th>OS</th><th>Note</th><th>Submitted</th><th>Actions</th></tr></thead>
-    <tbody>${pending.map(s => renderRow(s, true)).join("")}</tbody>
-  </table>`}
-` : `
-  ${reviewed.length === 0 ? '<div class="empty">No reviewed submissions yet.</div>' : `
-  <table>
-    <thead><tr><th>Domain</th><th>Status</th><th>Category</th><th>OS</th><th>Note</th><th>Submitted</th><th>Status</th></tr></thead>
-    <tbody>${reviewed.map(s => renderRow(s, false)).join("")}</tbody>
-  </table>`}
-`}
-</div>
-<div id="toast"></div>
+`;
 
-<dialog id="edit-dialog">
-  <form id="edit-form">
-    <h3 id="edit-title">Edit entry</h3>
-    <div class="sub" id="edit-domain"></div>
-    <label class="field" for="edit-name">Display name</label>
-    <input type="text" id="edit-name" placeholder="e.g. Notion (leave blank for none)">
-    <label class="check">
-      <input type="checkbox" id="edit-rec">
-      <span>Recommended ★</span>
-    </label>
-    <div class="actions">
-      <button type="button" class="btn-cancel" onclick="document.getElementById('edit-dialog').close()">Cancel</button>
-      <button type="submit" class="btn-save">Save</button>
-    </div>
-  </form>
-</dialog>
-
-<script>
+// Admin JS kept as a top-level constant so it isn't buried inside a
+// string template. Read/edit here with normal syntax support.
+const ADMIN_JS = `
 function toast(msg) {
   const el = document.getElementById('toast');
   el.textContent = msg;
@@ -699,8 +598,6 @@ function openEdit(btn, title) {
   editingId = btn.dataset.id;
   editingAction = title.startsWith('Approve') ? 'approve' : 'update';
   document.getElementById('edit-title').textContent = title;
-  // The row's domain sits in the first cell of the same tr. Show it so
-  // the dialog makes clear which row we're editing.
   const domainCell = btn.closest('tr').querySelector('td');
   document.getElementById('edit-domain').textContent = domainCell ? domainCell.innerText.trim() : '';
   document.getElementById('edit-name').value = btn.dataset.name || '';
@@ -724,7 +621,6 @@ document.getElementById('edit-form').addEventListener('submit', async (e) => {
 });
 
 async function approve(id) {
-  // Quick approve: no edits, keep whatever the submission already has.
   await fetch('/admin/approve/' + id, {
     method: 'POST', headers: {'Content-Type':'application/json'}, body: '{}',
   });
@@ -735,7 +631,169 @@ async function reject(id) {
   await fetch('/admin/reject/' + id, { method: 'POST' });
   toastAndReload('Rejected');
 }
-</script>
+`;
+
+function renderStatusBadge(s) {
+  return `<span class="status-badge" style="background:${STATUS_COLORS[s] || "#666"}">${escHtml(STATUS_LABELS[s] || s)}</span>`;
+}
+
+// Subrow under each pending submission showing the currently-shipped
+// values. Yellow-highlights the fields that differ.
+function renderDiffRow(sub) {
+  if (!sub.current) {
+    return `<tr><td colspan="7" class="diff diff--new"><em>Not in catalog yet — this would be a new entry.</em></td></tr>`;
+  }
+  const cur = sub.current;
+  const mark = (changed, text) =>
+    changed ? `<span class="diff-mark">${text}</span>` : text;
+
+  const parts = [
+    mark(cur.status !== sub.status,
+      `status ${escHtml(STATUS_LABELS[cur.status] || cur.status)}`),
+    mark(cur.category !== sub.category,
+      `cat ${escHtml(CATEGORY_LABELS[cur.category] || cur.category || "—")}`),
+    mark(cur.open_source !== sub.open_source, `OS:${cur.open_source ? "yes" : "no"}`),
+    mark(cur.login !== sub.login, `login:${cur.login ? "yes" : "no"}`),
+    mark(cur.abandoned !== sub.abandoned, `abandoned:${cur.abandoned ? "yes" : "no"}`),
+  ];
+  const name = cur.name ? `<strong>${escHtml(cur.name)}</strong> · ` : "";
+  const rec = cur.recommended ? ' · <span style="color:#006C49;font-weight:600">★ recommended</span>' : "";
+  return `<tr><td colspan="7" class="diff diff--changed">currently: ${name}${parts.join(" · ")}${rec}</td></tr>`;
+}
+
+function renderRow(sub, showActions) {
+  const os = sub.open_source ? "Yes" : "No";
+  const editAttrs = `data-id="${sub.id}" data-name="${escHtml(sub.name || "")}" data-rec="${sub.recommended ? 1 : 0}"`;
+
+  const actions = showActions
+    ? `<td style="white-space:nowrap">
+        <button class="btn btn--approve" onclick="approve(${sub.id})">Approve</button>
+        <button class="btn btn--edit" ${editAttrs} onclick="openEdit(this, 'Approve + edit')">Approve + edit</button>
+        <button class="btn btn--reject" onclick="reject(${sub.id})">Reject</button>
+      </td>`
+    : `<td style="white-space:nowrap">
+        <span class="review-badge review-badge--${sub.review}">${sub.review}</span>
+        ${sub.review === REVIEW.APPROVED
+          ? `<button class="btn btn--edit" ${editAttrs} onclick="openEdit(this, 'Edit entry')">Edit</button>`
+          : ""}
+      </td>`;
+
+  const nameBit = sub.name ? `<span class="row-name">${escHtml(sub.name)}</span> — ` : "";
+  const recBit = sub.recommended ? ' <span class="row-rec" title="Recommended">★</span>' : "";
+
+  const mainRow = `<tr>
+    <td>${nameBit}<span class="row-domain">${escHtml(sub.domain)}</span>${recBit}</td>
+    <td>${renderStatusBadge(sub.status)}</td>
+    <td>${escHtml(CATEGORY_LABELS[sub.category] || sub.category)}</td>
+    <td>${os}</td>
+    <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${sub.note ? escHtml(sub.note) : "-"}</td>
+    <td style="font-size:12px;color:#666">${escHtml(sub.submitted_at)}</td>
+    ${actions}
+  </tr>`;
+
+  return showActions && "current" in sub ? mainRow + renderDiffRow(sub) : mainRow;
+}
+
+function renderAdminHTML(pending, reviewed, activeTab) {
+  const pendingTab = `
+    ${pending.length === 0
+      ? '<div class="empty">No pending submissions.</div>'
+      : `<table>
+          <thead><tr><th>Domain</th><th>Status</th><th>Category</th><th>OS</th><th>Note</th><th>Submitted</th><th>Actions</th></tr></thead>
+          <tbody>${pending.map(s => renderRow(s, true)).join("")}</tbody>
+        </table>`}`;
+
+  const reviewedTab = `
+    ${reviewed.length === 0
+      ? '<div class="empty">No reviewed submissions yet.</div>'
+      : `<table>
+          <thead><tr><th>Domain</th><th>Status</th><th>Category</th><th>OS</th><th>Note</th><th>Submitted</th><th>Status</th></tr></thead>
+          <tbody>${reviewed.map(s => renderRow(s, false)).join("")}</tbody>
+        </table>`}`;
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>JustFYI Admin</title>
+<style>${ADMIN_CSS}</style>
+</head>
+<body>
+<div class="header">
+  <h1>JustFYI Admin</h1>
+  <div class="stats">
+    <span><strong>${pending.length}</strong> pending</span>
+    <form method="POST" action="/admin/logout" style="display:inline">
+      <button type="submit" class="btn btn--ghost">Sign out</button>
+    </form>
+  </div>
+</div>
+<div class="tabs">
+  <a class="tab ${activeTab === REVIEW.PENDING ? 'active' : ''}" href="/admin?tab=pending">Pending (${pending.length})</a>
+  <a class="tab ${activeTab === 'reviewed' ? 'active' : ''}" href="/admin?tab=reviewed">Reviewed</a>
+</div>
+<div class="content">${activeTab === REVIEW.PENDING ? pendingTab : reviewedTab}</div>
+
+<div id="toast"></div>
+
+<dialog id="edit-dialog">
+  <form id="edit-form">
+    <h3 id="edit-title">Edit entry</h3>
+    <div class="sub" id="edit-domain"></div>
+    <label class="field" for="edit-name">Display name</label>
+    <input type="text" id="edit-name" placeholder="e.g. Notion (leave blank for none)">
+    <label class="check">
+      <input type="checkbox" id="edit-rec">
+      <span>Recommended ★</span>
+    </label>
+    <div class="actions">
+      <button type="button" class="btn-cancel" onclick="document.getElementById('edit-dialog').close()">Cancel</button>
+      <button type="submit" class="btn-save">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<script>${ADMIN_JS}</script>
 </body>
 </html>`;
 }
+
+
+// ───────────────────────────────────────────────────────────
+// Router
+// ───────────────────────────────────────────────────────────
+
+export default {
+  async fetch(request, env) {
+    if (request.method === "OPTIONS") {
+      return new Response(null, { status: 204, headers: CORS_HEADERS });
+    }
+
+    const url = new URL(request.url);
+    const path = url.pathname;
+
+    // Public
+    if (path === "/submitRating" && request.method === "POST") return handleSubmitRating(request, env);
+    if (path === "/subscribe" && request.method === "POST") return handleSubscribe(request, env);
+
+    // Admin — gated by session cookie (email + password login).
+    if (path === "/admin" || path.startsWith("/admin/")) {
+      if (path === "/admin/login" && request.method === "POST") return handleAdminLogin(request, env);
+      if (path === "/admin/logout" && request.method === "POST") return handleAdminLogout();
+
+      // Unauthenticated GET /admin shows the login page. Everything
+      // else under /admin/* stays invisible (404) until auth'd.
+      if (!(await isAdmin(request, env))) {
+        if (path === "/admin" && request.method === "GET") return htmlResponse(renderLoginHTML(null));
+        return notFound();
+      }
+
+      if (path === "/admin" && request.method === "GET") return handleAdminPage(url, env);
+      if (path.startsWith("/admin/approve/") && request.method === "POST") return handleApprove(path, request, env);
+      if (path.startsWith("/admin/reject/") && request.method === "POST") return handleReject(path, env);
+    }
+
+    return notFound();
+  },
+};

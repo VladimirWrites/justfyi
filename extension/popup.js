@@ -4,12 +4,21 @@
  */
 
 const STATUS_MAP = {
-  0: { label: "Out of scope",     icon: "block",         css: "status-default" },
-  1: { label: "Free",             icon: "check_circle",  css: "status-free" },
-  2: { label: "Free with limits", icon: "bolt",          css: "status-limits" },
-  3: { label: "Paid",             icon: "attach_money",  css: "status-paid" },
+  0: { label: "Out of scope",     icon: "block",         css: "status-default", labelCss: "" },
+  1: { label: "Free",             icon: "check_circle",  css: "status-free",    labelCss: "label-free" },
+  2: { label: "Free with limits", icon: "bolt",          css: "status-limits",  labelCss: "label-limits" },
+  3: { label: "Paid",             icon: "attach_money",  css: "status-paid",    labelCss: "label-paid" },
 };
-const UNRATED = { label: "Unrated", icon: "help", css: "status-unrated" };
+const UNRATED = { label: "Unrated", icon: "help", css: "status-unrated", labelCss: "" };
+
+// Rating flags rendered below the main status. Driven by boolean fields
+// on the rating object so we can extend without adding `if` branches.
+const RATING_FLAGS = [
+  { key: "os",  icon: "code",      text: "Open source" },
+  { key: "lg",  icon: "lock",      text: "Requires login" },
+  { key: "ab",  icon: "skull",     text: "Abandoned" },
+  { key: "rec", icon: "thumb_up",  text: "Recommended" },
+];
 
 function svgIcon(name, className = "icon") {
   return `<svg class="${className}"><use href="#i-${name}"/></svg>`;
@@ -36,9 +45,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     } else if (rating && rating.s === 0) {
       document.getElementById("not-applicable").classList.remove("hidden");
       // Also allow the user to disagree and submit a real category for this site.
-      showSubmitForm(null, rating.s);
+      showSubmitForm(rating.s);
     } else {
-      showSubmitForm(domain);
+      showSubmitForm();
     }
   });
 
@@ -61,37 +70,22 @@ function showRating(rating, allRatings) {
   // Build flags
   const flagsEl = document.getElementById("rating-flags");
   flagsEl.innerHTML = "";
-
-  if (rating.os) {
-    flagsEl.appendChild(createFlag("code", "Open source"));
-  }
-  if (rating.lg) {
-    flagsEl.appendChild(createFlag("lock", "Requires login"));
-  }
-  if (rating.ab) {
-    flagsEl.appendChild(createFlag("skull", "Abandoned"));
-  }
-  if (rating.rec) {
-    flagsEl.appendChild(createFlag("thumb_up", "Recommended"));
+  for (const f of RATING_FLAGS) {
+    if (rating[f.key]) flagsEl.appendChild(createFlag(f.icon, f.text));
   }
 
   maybeShowDisclaimer(rating);
 
-  // Show alternatives if tool has issues (status >= 2) and has a category
+  // Show alternatives for tools with friction (paid / limited). Only
+  // curated "rec" entries in the same category, excluding this tool.
   if (rating.s >= 2 && rating.cat) {
     const alternatives = allRatings.filter(
-      (r) =>
-        r.rec &&                  // curated recommendation
-        r.cat === rating.cat &&   // same category
-        r.d !== rating.d          // not the same tool
+      r => r.rec && r.cat === rating.cat && r.d !== rating.d
     );
-
-    if (alternatives.length > 0) {
-      showAlternatives(alternatives);
-    }
+    if (alternatives.length) showAlternatives(alternatives);
   }
 
-  showSubmitForm(null, rating.s);
+  showSubmitForm(rating.s);
 }
 
 function maybeShowDisclaimer(rating) {
@@ -117,71 +111,68 @@ function showAlternatives(alternatives) {
   section.classList.remove("hidden");
 
   const list = document.getElementById("alternatives-list");
-  alternatives.forEach((alt) => {
-    const li = document.createElement("li");
-
-    const altStatus = STATUS_MAP[alt.s] || UNRATED;
-
-    const link = document.createElement("a");
-    link.className = "alt-link";
-    link.href = "https://" + alt.d;
-    link.target = "_blank";
-    link.rel = "noopener noreferrer";
-
-    const iconWrap = document.createElement("div");
-    iconWrap.className = "alt-icon-wrap " + altStatus.css;
-    iconWrap.innerHTML = svgIcon(altStatus.icon);
-
-    const nameSpan = document.createElement("span");
-    nameSpan.className = "alt-name";
-    nameSpan.textContent = alt.n || alt.d;
-
-    let osChip = null;
-    if (alt.os) {
-      osChip = document.createElement("span");
-      osChip.className = "alt-os-chip";
-      osChip.textContent = "OS";
-      osChip.title = "Open source";
-    }
-
-    const statusSpan = document.createElement("span");
-    statusSpan.className = "alt-status-label";
-    const labelCss = alt.s === 1 ? "label-free"
-      : alt.s === 2 ? "label-limits"
-      : alt.s === 3 ? "label-paid"
-      : "";
-    if (labelCss) statusSpan.classList.add(labelCss);
-    statusSpan.textContent = altStatus.label;
-
-    link.appendChild(iconWrap);
-    link.appendChild(nameSpan);
-    if (osChip) link.appendChild(osChip);
-    link.appendChild(statusSpan);
-    li.appendChild(link);
-    list.appendChild(li);
-  });
+  for (const alt of alternatives) {
+    list.appendChild(renderAlternative(alt));
+  }
 }
 
-function showSubmitForm(domain, currentStatus) {
+function renderAlternative(alt) {
+  const altStatus = STATUS_MAP[alt.s] || UNRATED;
+
+  const link = document.createElement("a");
+  link.className = "alt-link";
+  link.href = "https://" + alt.d;
+  link.target = "_blank";
+  link.rel = "noopener noreferrer";
+
+  const iconWrap = document.createElement("div");
+  iconWrap.className = "alt-icon-wrap " + altStatus.css;
+  iconWrap.innerHTML = svgIcon(altStatus.icon);
+  link.appendChild(iconWrap);
+
+  const nameSpan = document.createElement("span");
+  nameSpan.className = "alt-name";
+  nameSpan.textContent = alt.n || alt.d;
+  link.appendChild(nameSpan);
+
+  if (alt.os) {
+    const chip = document.createElement("span");
+    chip.className = "alt-os-chip";
+    chip.textContent = "OS";
+    chip.title = "Open source";
+    link.appendChild(chip);
+  }
+
+  const statusSpan = document.createElement("span");
+  statusSpan.className = "alt-status-label " + (altStatus.labelCss || "");
+  statusSpan.textContent = altStatus.label;
+  link.appendChild(statusSpan);
+
+  const li = document.createElement("li");
+  li.appendChild(link);
+  return li;
+}
+
+// Two flows: unrated (no arg) keeps the form expanded with an "Rate this
+// tool" title; update (currentStatus passed) collapses it behind a trigger
+// so an already-rated tool doesn't start with the form dominating.
+function showSubmitForm(currentStatus) {
   const section = document.getElementById("submit-section");
+  section.classList.remove("hidden");
+  if (currentStatus === undefined) return;
+
   const toggle = document.getElementById("submit-toggle");
   const body = document.getElementById("submit-body");
   const expandIcon = document.getElementById("submit-expand-icon");
-  section.classList.remove("hidden");
-
-  if (currentStatus !== undefined) {
-    // Update flow — collapse behind a trigger so the form doesn't dominate the popup;
-    // trigger's own label is "Update rating" so hide the redundant h3.
-    document.getElementById("submit-title").classList.add("hidden");
-    toggle.classList.remove("hidden");
-    body.classList.add("hidden");
-    toggle.addEventListener("click", () => {
-      const willOpen = body.classList.contains("hidden");
-      if (willOpen) collapseOther("submit");
-      body.classList.toggle("hidden");
-      expandIcon.classList.toggle("expanded", willOpen);
-    });
-  }
+  document.getElementById("submit-title").classList.add("hidden");
+  toggle.classList.remove("hidden");
+  body.classList.add("hidden");
+  toggle.addEventListener("click", () => {
+    const willOpen = body.classList.contains("hidden");
+    if (willOpen) collapseOther("submit");
+    body.classList.toggle("hidden");
+    expandIcon.classList.toggle("expanded", willOpen);
+  });
 }
 
 // Mutual-exclusion for the two collapsible sections (submit / newsletter).
