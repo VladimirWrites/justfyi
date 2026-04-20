@@ -634,13 +634,28 @@ const ADMIN_CSS = `
   dialog#edit-dialog h3 { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
   dialog#edit-dialog .sub { font-size: 12px; color: #666; margin-bottom: 20px; }
   dialog#edit-dialog label.field { display: block; font-size: 12px; font-weight: 600; color: #444; margin: 14px 0 6px; }
-  dialog#edit-dialog input[type=text] {
+  dialog#edit-dialog input[type=text],
+  dialog#edit-dialog select {
     width: 100%; font: inherit; font-size: 14px;
     padding: 10px 12px; border: 1px solid #D0D0D0; border-radius: 8px;
     background: #fff; color: #1C1B1F;
   }
-  dialog#edit-dialog input[type=text]:focus { outline: none; border-color: #006C49; box-shadow: 0 0 0 3px rgba(0,108,73,0.15); }
-  dialog#edit-dialog label.check { display: flex; align-items: center; gap: 8px; font-size: 14px; margin: 18px 0 4px; cursor: pointer; }
+  /* Replace the native select arrow with an SVG we can position with
+     real padding, instead of fighting the browser's default offset. */
+  dialog#edit-dialog select {
+    appearance: none; -webkit-appearance: none;
+    padding-right: 38px;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='%2349454F'><path d='M5 8l5 5 5-5z'/></svg>");
+    background-repeat: no-repeat;
+    background-position: right 14px center;
+    background-size: 14px;
+  }
+  dialog#edit-dialog input[type=text]:focus,
+  dialog#edit-dialog select:focus { outline: none; border-color: #006C49; box-shadow: 0 0 0 3px rgba(0,108,73,0.15); }
+  dialog#edit-dialog .row { display: flex; gap: 12px; }
+  dialog#edit-dialog .row > label.field { flex: 1; }
+  dialog#edit-dialog .checks { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px; margin-top: 16px; }
+  dialog#edit-dialog label.check { display: flex; align-items: center; gap: 8px; font-size: 14px; margin: 4px 0; cursor: pointer; }
   dialog#edit-dialog .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
   dialog#edit-dialog button { padding: 9px 18px; border-radius: 100px; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
   dialog#edit-dialog .btn-cancel { background: #fff; border: 1px solid #CAC4D0; color: #49454F; }
@@ -672,8 +687,15 @@ function openEdit(btn, title) {
   document.getElementById('edit-title').textContent = title;
   const domainCell = btn.closest('tr').querySelector('td');
   document.getElementById('edit-domain').textContent = domainCell ? domainCell.innerText.trim() : '';
+
+  document.getElementById('edit-status').value = btn.dataset.status;
+  document.getElementById('edit-category').value = btn.dataset.category;
+  document.getElementById('edit-os').checked = btn.dataset.os === '1';
+  document.getElementById('edit-lg').checked = btn.dataset.lg === '1';
+  document.getElementById('edit-ab').checked = btn.dataset.ab === '1';
   document.getElementById('edit-name').value = btn.dataset.name || '';
   document.getElementById('edit-rec').checked = btn.dataset.rec === '1';
+
   editDialog.showModal();
   document.getElementById('edit-name').focus();
 }
@@ -681,6 +703,11 @@ function openEdit(btn, title) {
 document.getElementById('edit-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const body = {
+    status: parseInt(document.getElementById('edit-status').value, 10),
+    category: parseInt(document.getElementById('edit-category').value, 10),
+    openSource: document.getElementById('edit-os').checked,
+    login: document.getElementById('edit-lg').checked,
+    abandoned: document.getElementById('edit-ab').checked,
     name: document.getElementById('edit-name').value.trim(),
     recommended: document.getElementById('edit-rec').checked,
   };
@@ -735,7 +762,18 @@ function renderDiffRow(sub) {
 
 function renderRow(sub, showActions) {
   const os = sub.open_source ? "Yes" : "No";
-  const editAttrs = `data-id="${sub.id}" data-name="${escHtml(sub.name || "")}" data-rec="${sub.recommended ? 1 : 0}"`;
+  // Every field the edit dialog needs, stuffed on the button so the JS
+  // can read them without another network call.
+  const editAttrs = [
+    `data-id="${sub.id}"`,
+    `data-status="${sub.status}"`,
+    `data-category="${sub.category ?? 0}"`,
+    `data-os="${sub.open_source ? 1 : 0}"`,
+    `data-lg="${sub.login ? 1 : 0}"`,
+    `data-ab="${sub.abandoned ? 1 : 0}"`,
+    `data-rec="${sub.recommended ? 1 : 0}"`,
+    `data-name="${escHtml(sub.name || "")}"`,
+  ].join(" ");
 
   const actions = showActions
     ? `<td style="white-space:nowrap">
@@ -814,12 +852,34 @@ function renderAdminHTML(pending, reviewed, activeTab) {
   <form id="edit-form">
     <h3 id="edit-title">Edit entry</h3>
     <div class="sub" id="edit-domain"></div>
+
+    <div class="row">
+      <label class="field">Status
+        <select id="edit-status">
+          <option value="1">Free</option>
+          <option value="2">Free with limits</option>
+          <option value="3">Paid</option>
+          <option value="0">Out of scope</option>
+        </select>
+      </label>
+      <label class="field">Category
+        <select id="edit-category">
+          ${Object.entries(CATEGORY_LABELS).map(([v, l]) =>
+            `<option value="${v}">${escHtml(l)}</option>`).join("")}
+        </select>
+      </label>
+    </div>
+
     <label class="field" for="edit-name">Display name</label>
     <input type="text" id="edit-name" placeholder="e.g. Notion (leave blank for none)">
-    <label class="check">
-      <input type="checkbox" id="edit-rec">
-      <span>Recommended ★</span>
-    </label>
+
+    <div class="checks">
+      <label class="check"><input type="checkbox" id="edit-os"> Open source</label>
+      <label class="check"><input type="checkbox" id="edit-lg"> Requires login</label>
+      <label class="check"><input type="checkbox" id="edit-ab"> Abandoned</label>
+      <label class="check"><input type="checkbox" id="edit-rec"> Recommended ★</label>
+    </div>
+
     <div class="actions">
       <button type="button" class="btn-cancel" onclick="document.getElementById('edit-dialog').close()">Cancel</button>
       <button type="submit" class="btn-save">Save</button>
