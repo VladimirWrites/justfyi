@@ -3,7 +3,7 @@
  * Handles: local ratings lookup, tab badge updates, submission relay.
  */
 
-const API_BASE = "https://justfyi-api.write-ade.workers.dev";
+const API_BASE = "https://api.justfyi.app";
 
 // ─── URL Normalization (keep in sync with worker/src/index.js) ───
 // Two-part public suffixes — everything before the eTLD+1 is stripped.
