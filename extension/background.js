@@ -38,8 +38,14 @@ const STATUS_ICONS = {
 };
 
 // ─── Install handler: load bundled ratings ───
-chrome.runtime.onInstalled.addListener(async () => {
+chrome.runtime.onInstalled.addListener(async (details) => {
   await loadBundledRatings();
+
+  // Fresh install only — open the pin-nudge page so the user doesn't
+  // bounce after Chrome tucks the icon into the extensions overflow.
+  if (details.reason === "install") {
+    chrome.tabs.create({ url: chrome.runtime.getURL("welcome.html") });
+  }
 });
 
 // Reload bundled ratings whenever the extension version changes.

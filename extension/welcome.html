@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Welcome to JustFYI</title>
+<style>
+  :root {
+    --primary: #006C49;
+    --primary-hover: #005A3C;
+    --surface: #FAFAFA;
+    --on-surface: #1C1B1F;
+    --on-surface-variant: #49454F;
+    --outline: #E0E0E0;
+    --accent-bg: #E8F5E9;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif;
+    background: var(--surface);
+    color: var(--on-surface);
+    display: flex; align-items: center; justify-content: center;
+    padding: 40px 20px;
+  }
+  main {
+    max-width: 520px; width: 100%;
+    background: #fff;
+    border: 1px solid var(--outline);
+    border-radius: 20px;
+    padding: 40px 44px;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.04);
+    text-align: center;
+  }
+  .logo { width: 72px; height: 72px; margin-bottom: 20px; }
+  h1 { font-size: 24px; font-weight: 700; line-height: 1.25; margin-bottom: 8px; }
+  .lede { font-size: 15px; color: var(--on-surface-variant); line-height: 1.5; margin-bottom: 28px; }
+
+  .steps {
+    list-style: none; counter-reset: step;
+    text-align: left;
+    background: var(--surface);
+    border: 1px solid var(--outline);
+    border-radius: 14px;
+    padding: 18px 22px;
+    margin-bottom: 24px;
+  }
+  .steps li {
+    counter-increment: step;
+    position: relative;
+    padding: 10px 0 10px 38px;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  .steps li + li { border-top: 1px solid var(--outline); }
+  .steps li::before {
+    content: counter(step);
+    position: absolute; left: 0; top: 10px;
+    width: 26px; height: 26px;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--accent-bg);
+    color: var(--primary);
+    border-radius: 50%;
+    font-size: 12px; font-weight: 700;
+  }
+  .steps strong { color: var(--on-surface); font-weight: 600; }
+
+  .visual {
+    display: flex; align-items: center; justify-content: center;
+    gap: 10px;
+    background: var(--accent-bg);
+    border-radius: 12px;
+    padding: 14px;
+    margin-bottom: 24px;
+    font-size: 13px;
+    color: var(--primary);
+  }
+  .visual svg { width: 20px; height: 20px; }
+
+  .tip {
+    font-size: 13px; color: var(--on-surface-variant);
+    line-height: 1.6;
+    margin-bottom: 28px;
+  }
+
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    padding: 11px 24px;
+    background: var(--primary); color: #fff;
+    border-radius: 100px;
+    font-size: 14px; font-weight: 600;
+    text-decoration: none;
+    transition: background 120ms;
+  }
+  .btn:hover { background: var(--primary-hover); }
+  .btn:disabled { opacity: 0.6; cursor: default; }
+
+  .newsletter {
+    border-top: 1px solid var(--outline);
+    margin-top: 28px; padding-top: 24px;
+    text-align: left;
+  }
+  .newsletter h2 { font-size: 16px; font-weight: 700; margin-bottom: 6px; }
+  .newsletter p { font-size: 13px; color: var(--on-surface-variant); line-height: 1.5; margin-bottom: 14px; }
+  .newsletter form { display: flex; gap: 8px; flex-wrap: wrap; }
+  .newsletter input {
+    flex: 1; min-width: 180px;
+    font: inherit; font-size: 14px;
+    padding: 10px 14px;
+    border: 1px solid var(--outline);
+    border-radius: 100px;
+    color: var(--on-surface);
+    background: #fff;
+  }
+  .newsletter input:focus {
+    outline: none; border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(0,108,73,0.12);
+  }
+  .news-msg { margin-top: 10px; font-size: 12.5px; min-height: 1em; }
+  .news-msg.ok  { color: var(--primary); }
+  .news-msg.err { color: #9F403D; }
+</style>
+</head>
+<body>
+<main>
+  <img src="icons/icon128.png" alt="JustFYI" class="logo">
+  <h1>Thanks for installing JustFYI.</h1>
+  <p class="lede">One more 5-second step: <strong>pin the extension</strong> so the verdict is always one glance away.</p>
+
+  <div class="visual">
+    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20.5 11H19V7c0-1.1-.9-2-2-2h-4V3.5C13 2.12 11.88 1 10.5 1S8 2.12 8 3.5V5H4c-1.1 0-1.99.9-1.99 2v3.8H3.5c1.49 0 2.7 1.21 2.7 2.7s-1.21 2.7-2.7 2.7H2V20c0 1.1.9 2 2 2h3.8v-1.5c0-1.49 1.21-2.7 2.7-2.7 1.49 0 2.7 1.21 2.7 2.7V22H17c1.1 0 2-.9 2-2v-4h1.5c1.38 0 2.5-1.12 2.5-2.5S21.88 11 20.5 11z"/></svg>
+    <span>Look for this icon in the top-right of your browser.</span>
+  </div>
+
+  <ol class="steps">
+    <li>Click the <strong>puzzle-piece icon</strong> in your browser toolbar (top-right).</li>
+    <li>Find <strong>JustFYI</strong> in the dropdown.</li>
+    <li>Click the <strong>pin icon</strong> next to it.</li>
+  </ol>
+
+  <p class="tip">Every site you visit now shows a verdict on the toolbar — free, freemium, paid, or abandoned — before you upload a single file.</p>
+
+  <section class="newsletter">
+    <h2>The best new free tools, every week.</h2>
+    <p>One short email a week with genuinely-free tools we've rated. No filler. Unsubscribe anytime.</p>
+    <form id="news-form" novalidate>
+      <input type="email" id="news-email" placeholder="you@example.com" autocomplete="email" required>
+      <button type="submit" class="btn">Subscribe</button>
+    </form>
+    <p id="news-msg" class="news-msg" aria-live="polite"></p>
+  </section>
+</main>
+<script src="welcome.js"></script>
+</body>
+</html>

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "JustFYI",
-  "version": "0.9.4",
+  "version": "0.9.3",
   "description": "Just FYI - know if an online tool is actually free, freemium, paid, or abandoned, and get pointers to genuinely free alternatives.",
   "permissions": [
     "storage",
