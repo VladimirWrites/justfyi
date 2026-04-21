@@ -8,14 +8,10 @@
   { "d": "regex101.com", "s": 1, "os": false, "cat": 7, "n": "Regex101", "rec": true },
   { "d": "excalidraw.com", "s": 1, "os": true, "cat": 8, "n": "Excalidraw", "rec": true },
   { "d": "realtimecolors.com", "s": 1, "os": false, "cat": 8, "n": "Realtime Colors", "rec": true },
-  { "d": "pexels.com", "s": 1, "os": false, "cat": 8, "n": "Pexels", "rec": true },
-  { "d": "pixabay.com", "s": 1, "os": false, "cat": 8, "n": "Pixabay", "rec": true },
-  { "d": "inkscape.org", "s": 1, "os": true, "cat": 8, "rec": true },
+  { "d": "inkscape.org", "s": 1, "os": true, "cat": 8, "n": "Intscape", "rec": true },
   { "d": "ffmpeg.org", "s": 1, "os": true, "cat": 9, "n": "FFmpeg", "rec": true },
   { "d": "obsidian.md", "s": 1, "os": false, "cat": 10, "n": "Obsidian", "rec": true },
   { "d": "logseq.com", "s": 1, "os": true, "cat": 10, "n": "Logseq", "rec": true },
-  { "d": "affine.pro", "s": 1, "os": true, "cat": 10, "n": "AFFiNE", "rec": true },
-  { "d": "appflowy.io", "s": 1, "os": true, "cat": 10, "n": "AppFlowy", "rec": true },
   { "d": "joplinapp.org", "s": 1, "os": true, "cat": 10, "n": "Joplin", "rec": true },
   { "d": "haveibeenpwned.com", "s": 1, "os": false, "cat": 12, "n": "Have I Been Pwned", "rec": true },
   { "d": "ssllabs.com", "s": 1, "os": false, "cat": 12, "n": "SSL Labs", "rec": true },
@@ -47,6 +43,7 @@
   { "d": "cleverpdf.com", "s": 1, "os": false, "cat": 1 },
   { "d": "simplepdf.eu", "s": 2, "os": false, "cat": 1 },
   { "d": "pdf.io", "s": 2, "os": false, "cat": 1 },
+  { "d": "pdfcandy.com", "s": 2, "os": false, "cat": 1 },
 
   { "d": "adobe.com", "s": 3, "os": false, "cat": 2, "n": "Adobe" },
   { "d": "squoosh.app", "s": 1, "os": true, "cat": 2, "n": "Squoosh" },
@@ -78,6 +75,7 @@
   { "d": "kdenlive.org", "s": 1, "os": true, "cat": 3 },
   { "d": "openshot.org", "s": 1, "os": true, "cat": 3 },
   { "d": "shotcut.org", "s": 1, "os": true, "cat": 3 },
+  { "d": "blackmagicdesign.com", "s": 2, "os": false, "cat": 3, "n": "DaVinci Resolve" },
 
   { "d": "vocaroo.com", "s": 1, "os": false, "cat": 4, "n": "Vocaroo" },
   { "d": "bandlab.com", "s": 2, "os": false, "cat": 4, "n": "BandLab" },
@@ -90,6 +88,7 @@
   { "d": "lmms.io", "s": 1, "os": true, "cat": 4 },
   { "d": "tenacityaudio.org", "s": 1, "os": true, "cat": 4 },
   { "d": "ocenaudio.com", "s": 1, "os": false, "cat": 4 },
+  { "d": "ableton.com", "s": 3, "os": false, "cat": 4, "n": "Ableton Live" },
 
   { "d": "chatgpt.com", "s": 2, "os": false, "cat": 5, "n": "ChatGPT" },
   { "d": "openai.com", "s": 3, "os": false, "cat": 5, "n": "OpenAI" },
@@ -116,7 +115,7 @@
   { "d": "copilot.microsoft.com", "s": 2, "os": false, "cat": 5, "lg": true },
   { "d": "chat.mistral.ai", "s": 2, "os": false, "cat": 5, "lg": true },
 
-  { "d": "grammarly.com", "s": 2, "os": false, "cat": 6, "n": "Grammarly" },
+  { "d": "grammarly.com", "s": 2, "os": false, "cat": 6, "n": "Grammarly", "lg": true },
   { "d": "languagetool.org", "s": 1, "os": true, "cat": 6, "n": "LanguageTool" },
   { "d": "prowritingaid.com", "s": 2, "os": false, "cat": 6, "n": "ProWritingAid" },
   { "d": "hemingwayapp.com", "s": 2, "os": false, "cat": 6, "n": "Hemingway Editor" },
@@ -141,9 +140,12 @@
   { "d": "supabase.com", "s": 2, "os": true, "cat": 7, "lg": true },
   { "d": "ngrok.com", "s": 2, "os": false, "cat": 7, "lg": true },
   { "d": "sentry.io", "s": 2, "os": true, "cat": 7, "lg": true },
+  { "d": "hoppscotch.io", "s": 1, "os": true, "cat": 7 },
   { "d": "wireguard.com", "s": 1, "os": true, "cat": 7 },
   { "d": "openvpn.net", "s": 1, "os": true, "cat": 7 },
 
+  { "d": "pexels.com", "s": 1, "os": false, "cat": 8, "n": "Pexels" },
+  { "d": "pixabay.com", "s": 1, "os": false, "cat": 8, "n": "Pixabay" },
   { "d": "canva.com", "s": 2, "os": false, "cat": 8, "n": "Canva" },
   { "d": "unsplash.com", "s": 2, "os": false, "cat": 8, "n": "Unsplash" },
   { "d": "drawio.com", "s": 1, "os": true, "cat": 8, "n": "draw.io" },
@@ -159,6 +161,7 @@
   { "d": "lucidchart.com", "s": 2, "os": false, "cat": 8, "n": "Lucidchart" },
   { "d": "flaticon.com", "s": 2, "os": false, "cat": 8, "n": "Flaticon" },
   { "d": "freepik.com", "s": 2, "os": false, "cat": 8, "n": "Freepik" },
+  { "d": "iconify.design", "s": 1, "os": true, "cat": 8 },
 
   { "d": "convertio.co", "s": 2, "os": false, "cat": 9, "n": "Convertio" },
   { "d": "cloudconvert.com", "s": 2, "os": false, "cat": 9, "n": "CloudConvert" },
@@ -168,6 +171,8 @@
   { "d": "aconvert.com", "s": 2, "os": false, "cat": 9, "n": "Aconvert" },
   { "d": "pdf2go.com", "s": 2, "os": false, "cat": 9, "n": "PDF2Go" },
 
+  { "d": "affine.pro", "s": 1, "os": true, "cat": 10, "n": "AFFiNE" },
+  { "d": "appflowy.io", "s": 1, "os": true, "cat": 10, "n": "AppFlowy" },
   { "d": "notion.com", "s": 2, "os": false, "cat": 10, "n": "Notion", "lg": true },
   { "d": "evernote.com", "s": 2, "os": false, "cat": 10, "n": "Evernote" },
   { "d": "roamresearch.com", "s": 3, "os": false, "cat": 10, "n": "Roam Research" },
@@ -234,6 +239,8 @@
   { "d": "telegram.org", "s": 1, "os": false, "cat": [17,22], "lg": true },
   { "d": "whatsapp.com", "s": 1, "os": false, "cat": [17,22], "lg": true },
   { "d": "discord.com", "s": 2, "os": false, "cat": [17,22], "lg": true },
+
+  { "d": "outlook.com", "s": 2, "os": false, "cat": 18, "lg": true },
 
   { "d": "duolingo.com", "s": 2, "os": false, "cat": 19, "lg": true },
   { "d": "brilliant.org", "s": 3, "os": false, "cat": 19, "lg": true },
