@@ -25,6 +25,11 @@ function svgIcon(name, className = "icon") {
   return `<svg class="${className}"><use href="#i-${name}"/></svg>`;
 }
 
+// Snapshot of the form values that match the current rating at the time
+// the form was prefilled. The submit handler compares against this to
+// block no-op submissions that would only waste reviewer time.
+let currentSnapshot = null;
+
 document.addEventListener("DOMContentLoaded", async () => {
   const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
   const tab = tabs[0];
@@ -46,7 +51,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     } else if (rating && rating.s === 0) {
       document.getElementById("not-applicable").classList.remove("hidden");
       // Also allow the user to disagree and submit a real category for this site.
-      showSubmitForm(rating.s);
+      showSubmitForm(rating);
     } else {
       showSubmitForm();
     }
@@ -92,6 +97,7 @@ function setupCategoryDropdown() {
       const was = opt.getAttribute("aria-selected") === "true";
       opt.setAttribute("aria-selected", String(!was));
       refreshSummary();
+      updateSubmitButtonState();
     });
   }
   document.addEventListener("click", (e) => {
@@ -138,7 +144,7 @@ function showRating(rating, allRatings) {
     if (alternatives.length) showAlternatives(alternatives);
   }
 
-  showSubmitForm(rating.s);
+  showSubmitForm(rating);
 }
 
 function catsOf(r) {
@@ -213,12 +219,16 @@ function renderAlternative(alt) {
 }
 
 // Two flows: unrated (no arg) keeps the form expanded with an "Rate this
-// tool" title; update (currentStatus passed) collapses it behind a trigger
-// so an already-rated tool doesn't start with the form dominating.
-function showSubmitForm(currentStatus) {
+// tool" title; update (rating passed) collapses it behind a trigger and —
+// for in-scope ratings — prefills every field with the current values so
+// the user edits rather than re-types.
+function showSubmitForm(rating) {
   const section = document.getElementById("submit-section");
   section.classList.remove("hidden");
-  if (currentStatus === undefined) return;
+  if (rating === undefined) {
+    currentSnapshot = null;
+    return;
+  }
 
   const toggle = document.getElementById("submit-toggle");
   const body = document.getElementById("submit-body");
@@ -231,6 +241,76 @@ function showSubmitForm(currentStatus) {
     if (willOpen) collapseOther("submit");
     body.classList.toggle("hidden");
     expandIcon.classList.toggle("expanded", willOpen);
+  });
+
+  // Out-of-scope entries carry no category/flags worth prefilling, and
+  // the user is contesting the verdict — start them with a blank form.
+  if (rating.s === 0) {
+    currentSnapshot = null;
+    return;
+  }
+
+  document.getElementById("status-select").value = String(rating.s);
+  setCategorySelection(catsOf(rating));
+  document.getElementById("opensource-check").checked = !!rating.os;
+  document.getElementById("login-check").checked = !!rating.lg;
+  document.getElementById("abandoned-check").checked = !!rating.ab;
+  document.getElementById("subscription-check").checked = !!rating.sb;
+
+  currentSnapshot = snapshotForm();
+  updateSubmitButtonState();
+}
+
+// When the form was prefilled with a current rating, keep the submit
+// button in sync with whether anything has actually changed. Unchanged
+// form → disabled button labelled "No changes yet"; otherwise enabled
+// and labelled "Submit Rating". Does nothing on the unrated flow.
+function updateSubmitButtonState() {
+  if (!currentSnapshot) return;
+  const btn = document.getElementById("submit-btn");
+  if (!btn) return;
+  const matches = snapshotForm() === currentSnapshot;
+  btn.disabled = matches;
+  btn.innerHTML = matches
+    ? svgIcon("done", "icon btn-icon") + "No changes yet"
+    : svgIcon("send", "icon btn-icon") + "Submit Rating";
+}
+
+function setCategorySelection(cats) {
+  const options = [...document.querySelectorAll("#category-menu .multi-option")];
+  const wanted = new Set(cats.map(Number));
+  for (const opt of options) {
+    const v = parseInt(opt.dataset.value, 10);
+    opt.setAttribute("aria-selected", wanted.has(v) ? "true" : "false");
+  }
+  // Manually refresh the trigger summary since we bypassed the click handler.
+  const summary = document.getElementById("category-summary");
+  const selected = options.filter(o => o.getAttribute("aria-selected") === "true");
+  if (selected.length === 0) {
+    summary.textContent = "Select categories…";
+    summary.classList.add("placeholder");
+  } else {
+    const labels = selected.map(o => o.textContent.trim());
+    summary.textContent = selected.length <= 2
+      ? labels.join(", ")
+      : `${labels[0]} + ${selected.length - 1} more`;
+    summary.classList.remove("placeholder");
+  }
+}
+
+// Stable JSON snapshot of the submit form — used to detect a no-op update.
+function snapshotForm() {
+  const cats = [...document.querySelectorAll('#category-menu .multi-option[aria-selected="true"]')]
+    .map(li => parseInt(li.dataset.value, 10))
+    .sort((a, b) => a - b);
+  return JSON.stringify({
+    status: parseInt(document.getElementById("status-select").value, 10),
+    categories: cats,
+    openSource: document.getElementById("opensource-check").checked,
+    login: document.getElementById("login-check").checked,
+    abandoned: document.getElementById("abandoned-check").checked,
+    subscription: document.getElementById("subscription-check").checked,
+    note: document.getElementById("notes-input").value.trim(),
   });
 }
 
@@ -251,6 +331,11 @@ function collapseOther(openingId) {
 
 function setupSubmitForm() {
   const form = document.getElementById("submit-form");
+  // Keep the submit button in sync with the prefilled-snapshot diff.
+  // `input` covers text fields; `change` covers checkboxes and selects.
+  // Category chip clicks dispatch directly from setupCategoryDropdown.
+  form.addEventListener("input", updateSubmitButtonState);
+  form.addEventListener("change", updateSubmitButtonState);
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
 
@@ -270,6 +355,18 @@ function setupSubmitForm() {
       resultEl.classList.remove("hidden");
       resultEl.className = "result-error";
       resultEl.innerHTML = svgIcon("warning") + "Pick at least one category.";
+      btn.disabled = false;
+      btn.innerHTML = svgIcon("send", "icon btn-icon") + "Submit Rating";
+      return;
+    }
+
+    // Block no-op updates: if the form matches the current rating
+    // (including the note), there's nothing for the reviewer to act on.
+    if (currentSnapshot && snapshotForm() === currentSnapshot) {
+      const resultEl = document.getElementById("submit-result");
+      resultEl.classList.remove("hidden");
+      resultEl.className = "result-error";
+      resultEl.innerHTML = svgIcon("warning") + "Nothing to update — these match the current rating.";
       btn.disabled = false;
       btn.innerHTML = svgIcon("send", "icon btn-icon") + "Submit Rating";
       return;
