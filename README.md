@@ -52,7 +52,7 @@ For Chrome Web Store publishing, zip the `/extension` folder and upload.
 1. **On install**: Extension loads bundled `data/ratings.json` into `chrome.storage.local`, indexed by domain for O(1) lookup
 2. **On tab change**: Normalizes the current domain, looks up in local cache, updates the toolbar icon
 3. **Submissions**: Users rate unrated tools through the popup. Submissions POST to a Cloudflare Worker (no auth needed)
-4. **Newsletter**: Users can sign up for a weekly digest of the best new free tools. Emails are stored in a `subscribers` D1 table with no IP or user-agent
+4. **Newsletter**: Users can sign up for a weekly digest of the best new tools we've rated. Emails are stored in a `subscribers` D1 table with no IP or user-agent
 5. **Moderation**: Review submissions at `/admin` (protected by Cloudflare Access). Approved rows are copied into `extension/data/ratings.json` by hand and shipped with the next extension release
 6. **PII policy**: Neither `submissions` nor `subscribers` retains IP or User-Agent. IPs live only in a short-lived `rate_limits` table that self-purges each request (~1h lifetime)
 
