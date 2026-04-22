@@ -372,6 +372,28 @@
   { "d": "keepassxc.org", "s": 1, "os": true, "cat": 32 },
   { "d": "2fas.com", "s": 2, "os": true, "cat": 32, "sb": true },
 
+  { "d": "duckduckgo.com", "s": 1, "os": false, "cat": 33, "n": "DuckDuckGo" },
+  { "d": "kagi.com", "s": 3, "os": false, "cat": 33, "n": "Kagi", "lg": true, "sb": true },
+  { "d": "startpage.com", "s": 1, "os": false, "cat": 33, "n": "Startpage" },
+  { "d": "ecosia.org", "s": 1, "os": false, "cat": 33, "n": "Ecosia" },
+  { "d": "mojeek.com", "s": 1, "os": false, "cat": 33, "n": "Mojeek" },
+  { "d": "qwant.com", "s": 1, "os": false, "cat": 33, "n": "Qwant" },
+
+  { "d": "cal.com", "s": 2, "os": true, "cat": 34, "n": "Cal.com", "lg": true, "sb": true },
+  { "d": "calendly.com", "s": 2, "os": false, "cat": 34, "n": "Calendly", "lg": true, "sb": true },
+  { "d": "savvycal.com", "s": 3, "os": false, "cat": 34, "n": "SavvyCal", "lg": true, "sb": true },
+  { "d": "doodle.com", "s": 2, "os": false, "cat": 34, "n": "Doodle", "lg": true, "sb": true },
+  { "d": "when2meet.com", "s": 1, "os": false, "cat": 34, "n": "When2meet" },
+  { "d": "lettucemeet.com", "s": 1, "os": false, "cat": 34, "n": "LettuceMeet" },
+  { "d": "flexibits.com", "s": 2, "os": false, "cat": 34, "n": "Fantastical", "sb": true },
+
+  { "d": "getpocket.com", "s": 2, "os": false, "cat": 35, "n": "Pocket", "lg": true, "ab": true },
+  { "d": "instapaper.com", "s": 2, "os": false, "cat": 35, "n": "Instapaper", "lg": true, "sb": true },
+  { "d": "raindrop.io", "s": 2, "os": false, "cat": 35, "n": "Raindrop", "lg": true, "sb": true },
+  { "d": "wallabag.org", "s": 1, "os": true, "cat": 35, "n": "Wallabag" },
+  { "d": "readwise.io", "s": 3, "os": false, "cat": 35, "n": "Readwise Reader", "lg": true, "sb": true },
+  { "d": "omnivore.app", "s": 1, "os": true, "cat": 35, "n": "Omnivore", "ab": true },
+
   { "d": "amazon.com", "s": 0 },
   { "d": "amazon.co.uk", "s": 0 },
   { "d": "amazon.de", "s": 0 },
