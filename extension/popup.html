@@ -26,6 +26,7 @@
     <symbol id="i-hourglass_empty" viewBox="0 -960 960 960"><path d="M320-160h320v-120q0-66-47-113t-113-47q-66 0-113 47t-47 113v120Zm273-407q47-47 47-113v-120H320v120q0 66 47 113t113 47q66 0 113-47ZM160-80v-80h80v-120q0-61 28.5-114.5T348-480q-51-32-79.5-85.5T240-680v-120h-80v-80h640v80h-80v120q0 61-28.5 114.5T612-480q51 32 79.5 85.5T720-280v120h80v80H160Z"/></symbol>
     <symbol id="i-done" viewBox="0 -960 960 960"><path d="M382-240 154-468l57-57 171 171 367-367 57 57-424 424Z"/></symbol>
     <symbol id="i-warning" viewBox="0 -960 960 960"><path d="m40-120 440-760 440 760H40Zm138-80h604L480-720 178-200Zm330.5-51.5Q520-263 520-280t-11.5-28.5Q497-320 480-320t-28.5 11.5Q440-297 440-280t11.5 28.5Q463-240 480-240t28.5-11.5ZM440-360h80v-200h-80v200Zm40-100Z"/></symbol>
+    <symbol id="i-autorenew" viewBox="0 -960 960 960"><path d="M240-80q-50 0-85-35t-35-85v-120h80v120q0 17 11.5 28.5T240-160h120v80H240Zm360 0v-80h120q17 0 28.5-11.5T760-200v-120h80v120q0 50-35 85t-85 35H600ZM120-600v-120q0-50 35-85t85-35h120v80H240q-17 0-28.5 11.5T200-720v120h-80Zm640 0v-120q0-17-11.5-28.5T720-760H600v-80h120q50 0 85 35t35 85v120h-80ZM480-280q-83 0-141.5-58.5T280-480q0-83 58.5-141.5T480-680h24l-64-64 56-56 160 160-160 160-56-56 64-64h-24q-50 0-85 35t-35 85q0 50 35 85t85 35q50 0 85-35t35-85h80q0 83-58.5 141.5T480-280Z"/></symbol>
   </svg>
 
   <div id="app">
@@ -127,6 +128,7 @@
             <li class="multi-option" role="option" data-value="29">Translation</li>
             <li class="multi-option" role="option" data-value="30">3D / CAD</li>
             <li class="multi-option" role="option" data-value="31">Maps / Navigation</li>
+            <li class="multi-option" role="option" data-value="32">Password Manager</li>
             <li class="multi-option" role="option" data-value="999">Other</li>
           </ul>
         </div>
@@ -144,6 +146,11 @@
         <label class="checkbox-label">
           <input type="checkbox" id="abandoned-check">
           <span>Abandoned</span>
+        </label>
+
+        <label class="checkbox-label">
+          <input type="checkbox" id="subscription-check">
+          <span>Subscription-based</span>
         </label>
 
         <label for="notes-input">Notes (optional)</label>

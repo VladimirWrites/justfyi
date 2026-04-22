@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS submissions (
   login INTEGER NOT NULL DEFAULT 0,
   abandoned INTEGER NOT NULL DEFAULT 0,
   recommended INTEGER NOT NULL DEFAULT 0,
+  subscription INTEGER NOT NULL DEFAULT 0,
   name TEXT,
   note TEXT NOT NULL DEFAULT '',
   submitted_at TEXT NOT NULL,

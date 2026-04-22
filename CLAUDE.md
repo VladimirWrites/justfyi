@@ -55,8 +55,9 @@ Status is the money/friction axis. Login and abandoned are orthogonal flags — 
 - `rec`: boolean -- true only for curated recommended alternatives (requires `n`)
 - `lg`: boolean -- true if the free tier requires signup/account
 - `ab`: boolean -- true if the project is sunset / no longer maintained
+- `sb`: boolean -- true if pricing is subscription-based (recurring), not one-time; orthogonal to status — meaningful on both paid and freemium
 
 ## Categories
-1=PDF, 2=Image, 3=Video, 4=Audio, 5=AI Generate, 6=Writing, 7=Dev, 8=Design, 9=File Convert, 10=Notes / Docs, 11=SEO, 12=Security, 13=VPN, 14=Browser, 15=Tasks / Project Mgmt, 16=Cloud Storage, 17=Communication, 18=Email, 19=Learning, 20=Analytics, 21=Automation, 22=Video Calls, 23=Code Hosting, 24=Deploy / Hosting, 25=Playgrounds / Online IDE, 26=Finance / Accounting, 27=Forms & Surveys, 28=CRM / Sales, 29=Translation, 30=3D / CAD, 31=Maps / Navigation, 999=Other
+1=PDF, 2=Image, 3=Video, 4=Audio, 5=AI Generate, 6=Writing, 7=Dev, 8=Design, 9=File Convert, 10=Notes / Docs, 11=SEO, 12=Security, 13=VPN, 14=Browser, 15=Tasks / Project Mgmt, 16=Cloud Storage, 17=Communication, 18=Email, 19=Learning, 20=Analytics, 21=Automation, 22=Video Calls, 23=Code Hosting, 24=Deploy / Hosting, 25=Playgrounds / Online IDE, 26=Finance / Accounting, 27=Forms & Surveys, 28=CRM / Sales, 29=Translation, 30=3D / CAD, 31=Maps / Navigation, 32=Password Manager, 999=Other
 
 Numbered categories stay sortable; `999` is a catch-all bucket so new categories can be inserted in the numbered sequence without renumbering.

@@ -16,6 +16,7 @@ const UNRATED = { label: "Unrated", icon: "help", css: "status-unrated", labelCs
 const RATING_FLAGS = [
   { key: "os",  icon: "code",      text: "Open source" },
   { key: "lg",  icon: "lock",      text: "Requires login" },
+  { key: "sb",  icon: "autorenew", text: "Subscription" },
   { key: "ab",  icon: "skull",     text: "Abandoned" },
   { key: "rec", icon: "thumb_up",  text: "Recommended" },
 ];
@@ -281,6 +282,7 @@ function setupSubmitForm() {
       openSource: document.getElementById("opensource-check").checked,
       login: document.getElementById("login-check").checked,
       abandoned: document.getElementById("abandoned-check").checked,
+      subscription: document.getElementById("subscription-check").checked,
       note: document.getElementById("notes-input").value.trim(),
     };
 

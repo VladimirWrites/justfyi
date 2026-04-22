@@ -22,7 +22,7 @@
 // ───────────────────────────────────────────────────────────
 
 const VALID_STATUSES = [0, 1, 2, 3];
-const VALID_CATEGORIES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 999];
+const VALID_CATEGORIES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 999];
 
 const STATUS_LABELS = {
   0: "Out of scope",
@@ -46,6 +46,7 @@ const CATEGORY_LABELS = {
   23: "Code Hosting", 24: "Deploy / Hosting", 25: "Playgrounds / Online IDE",
   26: "Finance / Accounting", 27: "Forms & Surveys", 28: "CRM / Sales",
   29: "Translation", 30: "3D / CAD", 31: "Maps / Navigation",
+  32: "Password Manager",
   999: "Other",
 };
 
@@ -270,7 +271,7 @@ async function handleSubmitRating(request, env) {
   try { body = await request.json(); }
   catch { return jsonResponse({ error: "Invalid JSON body." }, 400); }
 
-  const { domain, status, openSource, login, abandoned, note } = body;
+  const { domain, status, openSource, login, abandoned, subscription, note } = body;
 
   if (!domain || typeof domain !== "string" || domain.trim().length === 0)
     return jsonResponse({ error: "domain is required." }, 400);
@@ -289,6 +290,8 @@ async function handleSubmitRating(request, env) {
       return jsonResponse({ error: "login must be a boolean." }, 400);
     if (abandoned !== undefined && typeof abandoned !== "boolean")
       return jsonResponse({ error: "abandoned must be a boolean." }, 400);
+    if (subscription !== undefined && typeof subscription !== "boolean")
+      return jsonResponse({ error: "subscription must be a boolean." }, 400);
   }
 
   const ip = request.headers.get("cf-connecting-ip") || "unknown";
@@ -298,8 +301,8 @@ async function handleSubmitRating(request, env) {
   // Community submissions never set "recommended" or "name" — those
   // are curation choices the admin makes after review.
   await env.DB.prepare(
-    `INSERT INTO submissions (domain, status, category, categories, open_source, login, abandoned, recommended, name, note, submitted_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 0, NULL, ?, datetime('now'))`
+    `INSERT INTO submissions (domain, status, category, categories, open_source, login, abandoned, subscription, recommended, name, note, submitted_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, ?, datetime('now'))`
   ).bind(
     normalizeUrl(domain), status,
     status === 0 ? 0 : cats[0],      // legacy `category` column — keep first cat for back-compat
@@ -307,6 +310,7 @@ async function handleSubmitRating(request, env) {
     openSource ? 1 : 0,
     login ? 1 : 0,
     abandoned ? 1 : 0,
+    subscription ? 1 : 0,
     sanitizeText(note, 200)
   ).run();
 
@@ -456,6 +460,7 @@ function rowToJsonEntry(row) {
   if (row.recommended) e.rec = true;
   if (row.login) e.lg = true;
   if (row.abandoned) e.ab = true;
+  if (row.subscription) e.sb = true;
   return e;
 }
 
@@ -523,6 +528,7 @@ async function handleApprove(path, request, env) {
   const finalOs = pick("openSource", sub.open_source, asInt01);
   const finalLogin = pick("login", sub.login, asInt01);
   const finalAbandoned = pick("abandoned", sub.abandoned, asInt01);
+  const finalSubscription = pick("subscription", sub.subscription, asInt01);
   const finalRec = pick("recommended", sub.recommended, asInt01);
 
   // Categories: accept new `categories` array OR legacy `category` int,
@@ -545,11 +551,11 @@ async function handleApprove(path, request, env) {
   await env.DB.prepare(
     `UPDATE submissions
        SET review = ?, status = ?, category = ?, categories = ?, open_source = ?,
-           login = ?, abandoned = ?, recommended = ?, name = ?
+           login = ?, abandoned = ?, subscription = ?, recommended = ?, name = ?
      WHERE id = ?`
   ).bind(
     REVIEW.APPROVED, finalStatus, finalCat, JSON.stringify(finalCats), finalOs,
-    finalLogin, finalAbandoned, finalRec, finalName, id
+    finalLogin, finalAbandoned, finalSubscription, finalRec, finalName, id
   ).run();
 
   return jsonResponse({ success: true });
@@ -681,6 +687,7 @@ const ADMIN_CSS = `
   .flag { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 10px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; margin-left: 6px; vertical-align: middle; }
   .flag--lg { background: #E3F2FD; color: #0D47A1; }
   .flag--ab { background: #EEE; color: #555; }
+  .flag--sb { background: #FFF3E0; color: #8A5A00; }
 
   /* Per-table filter bar */
   .filters { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; padding: 10px 14px; background: #fff; border: 1px solid #E0E0E0; border-radius: 8px; }
@@ -773,6 +780,7 @@ function openEdit(btn, title) {
   document.getElementById('edit-os').checked = btn.dataset.os === '1';
   document.getElementById('edit-lg').checked = btn.dataset.lg === '1';
   document.getElementById('edit-ab').checked = btn.dataset.ab === '1';
+  document.getElementById('edit-sb').checked = btn.dataset.sb === '1';
   document.getElementById('edit-name').value = btn.dataset.name || '';
   document.getElementById('edit-rec').checked = btn.dataset.rec === '1';
 
@@ -790,6 +798,7 @@ document.getElementById('edit-form').addEventListener('submit', async (e) => {
     openSource: document.getElementById('edit-os').checked,
     login: document.getElementById('edit-lg').checked,
     abandoned: document.getElementById('edit-ab').checked,
+    subscription: document.getElementById('edit-sb').checked,
     name: document.getElementById('edit-name').value.trim(),
     recommended: document.getElementById('edit-rec').checked,
   };
@@ -866,7 +875,8 @@ function initFilters(scope) {
         if (f === 'rec' && tr.dataset.rec !== '1') show = false;
         else if (f === 'lg' && tr.dataset.lg !== '1') show = false;
         else if (f === 'ab' && tr.dataset.ab !== '1') show = false;
-        else if (f === 'none' && (tr.dataset.rec === '1' || tr.dataset.lg === '1' || tr.dataset.ab === '1')) show = false;
+        else if (f === 'sb' && tr.dataset.sb !== '1') show = false;
+        else if (f === 'none' && (tr.dataset.rec === '1' || tr.dataset.lg === '1' || tr.dataset.ab === '1' || tr.dataset.sb === '1')) show = false;
       }
       if (show && rv && tr.dataset.review !== rv) show = false;
       tr.style.display = show ? '' : 'none';
@@ -919,6 +929,7 @@ function renderDiffRow(sub) {
     mark(cur.open_source !== sub.open_source, `OS:${cur.open_source ? "yes" : "no"}`),
     mark(cur.login !== sub.login, `login:${cur.login ? "yes" : "no"}`),
     mark(cur.abandoned !== sub.abandoned, `abandoned:${cur.abandoned ? "yes" : "no"}`),
+    mark(cur.subscription !== sub.subscription, `sub:${cur.subscription ? "yes" : "no"}`),
   ];
   const name = cur.name ? `<strong>${escHtml(cur.name)}</strong> · ` : "";
   const rec = cur.recommended ? ' · <span style="color:#006C49;font-weight:600">★ recommended</span>' : "";
@@ -939,6 +950,7 @@ function renderRow(sub, showActions) {
     `data-os="${sub.open_source ? 1 : 0}"`,
     `data-lg="${sub.login ? 1 : 0}"`,
     `data-ab="${sub.abandoned ? 1 : 0}"`,
+    `data-sb="${sub.subscription ? 1 : 0}"`,
     `data-rec="${sub.recommended ? 1 : 0}"`,
     `data-name="${escHtml(sub.name || "")}"`,
   ].join(" ");
@@ -960,6 +972,7 @@ function renderRow(sub, showActions) {
   const recBit = sub.recommended ? ' <span class="row-rec" title="Recommended">★</span>' : "";
   const lgBit = sub.login ? ' <span class="flag flag--lg" title="Requires login">login</span>' : "";
   const abBit = sub.abandoned ? ' <span class="flag flag--ab" title="Abandoned project">abandoned</span>' : "";
+  const sbBit = sub.subscription ? ' <span class="flag flag--sb" title="Subscription-based pricing">sub</span>' : "";
   // On pending rows, lead with a NEW / CHANGE pill so approving-on-autopilot
   // can't accidentally overwrite a curated entry.
   const kindBit = showActions && "current" in sub
@@ -978,12 +991,13 @@ function renderRow(sub, showActions) {
     `data-os="${sub.open_source ? 1 : 0}"`,
     `data-lg="${sub.login ? 1 : 0}"`,
     `data-ab="${sub.abandoned ? 1 : 0}"`,
+    `data-sb="${sub.subscription ? 1 : 0}"`,
     `data-rec="${sub.recommended ? 1 : 0}"`,
     `data-review="${escHtml(sub.review || "")}"`,
   ].join(" ");
 
   const mainRow = `<tr ${rowData}>
-    <td>${kindBit}${nameBit}<a class="row-domain" href="https://${escHtml(sub.domain)}" target="_blank" rel="noopener noreferrer">${escHtml(sub.domain)}</a>${recBit}${lgBit}${abBit}</td>
+    <td>${kindBit}${nameBit}<a class="row-domain" href="https://${escHtml(sub.domain)}" target="_blank" rel="noopener noreferrer">${escHtml(sub.domain)}</a>${recBit}${lgBit}${abBit}${sbBit}</td>
     <td>${renderStatusBadge(sub.status)}</td>
     <td>${catsLabel}</td>
     <td>${os}</td>
@@ -1029,6 +1043,7 @@ function renderFilterBar(scope) {
       <option value="rec">★ Recommended</option>
       <option value="lg">Requires login</option>
       <option value="ab">Abandoned</option>
+      <option value="sb">Subscription</option>
       <option value="none">No flags</option>
     </select>
     ${reviewFilter}
@@ -1111,6 +1126,7 @@ function renderAdminHTML(pending, reviewed, activeTab) {
       <label class="check"><input type="checkbox" id="edit-os"> Open source</label>
       <label class="check"><input type="checkbox" id="edit-lg"> Requires login</label>
       <label class="check"><input type="checkbox" id="edit-ab"> Abandoned</label>
+      <label class="check"><input type="checkbox" id="edit-sb"> Subscription</label>
       <label class="check"><input type="checkbox" id="edit-rec"> Recommended ★</label>
     </div>
 

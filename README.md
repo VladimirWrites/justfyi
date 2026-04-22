@@ -86,7 +86,8 @@ Status is the money/friction axis. Login and abandoned are orthogonal flags (see
 | 13   | VPN            | 29   | Translation              |
 | 14   | Browser        | 30   | 3D / CAD                 |
 | 15   | Tasks / PM     | 31   | Maps / Navigation        |
-| 16   | Cloud Storage  | 999  | Other                    |
+| 16   | Cloud Storage  | 32   | Password Manager         |
+|      |                | 999  | Other                    |
 
 `999` is the catch-all so numbered categories can grow contiguously without renumbering.
 
