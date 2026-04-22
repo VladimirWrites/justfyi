@@ -398,11 +398,13 @@ function handleAdminLogout() {
 //   4. Blank line.
 //   5. Out-of-scope (status = 0) entries at the end.
 async function handleAdminExport(env) {
+  // Order by `id` within each bucket — ratings rows are inserted in the
+  // order of the curated ratings.json on backfill and at the tail on new
+  // approval, so `id ASC` gives the right export sequence for free.
   const { results } = await env.DB.prepare(
-    `SELECT * FROM submissions
-     WHERE review = ?
+    `SELECT * FROM ratings
      ORDER BY recommended DESC, (status = 0) ASC, category ASC, id ASC`
-  ).bind(REVIEW.APPROVED).all();
+  ).all();
 
   const lines = ["["];
   let prev = null;
@@ -468,24 +470,38 @@ function rowToJsonEntry(row) {
 async function handleAdminPage(url, env) {
   const tab = url.searchParams.get("tab") || REVIEW.PENDING;
 
-  const [pending, recent] = await Promise.all([
+  // Pending lives in `submissions`; approved rows live in their own
+  // `ratings` table. Rejected submissions still come from `submissions`
+  // and are merged into the reviewed view alongside ratings.
+  const [pending, ratings, rejected] = await Promise.all([
     env.DB.prepare(
       "SELECT * FROM submissions WHERE review = ? ORDER BY submitted_at DESC"
     ).bind(REVIEW.PENDING).all(),
-    // No LIMIT — approved rows are the full catalog, the admin needs
-    // to see all of them. Sorted for stable browsing.
+    // Full catalog — admin needs to see all of it. Sorted for stable browsing.
     env.DB.prepare(
-      "SELECT * FROM submissions WHERE review != ? ORDER BY review ASC, category ASC, domain ASC"
-    ).bind(REVIEW.PENDING).all(),
+      "SELECT * FROM ratings ORDER BY category ASC, domain ASC"
+    ).all(),
+    env.DB.prepare(
+      "SELECT * FROM submissions WHERE review = ? ORDER BY submitted_at DESC"
+    ).bind(REVIEW.REJECTED).all(),
   ]);
 
-  const pendingWithCurrent = await attachCurrentApproved(env, pending.results);
-  return htmlResponse(renderAdminHTML(pendingWithCurrent, recent.results, tab));
+  // Tag every row with the table it came from so the renderer can pick
+  // the right edit endpoint (and skip Edit on rejected submissions).
+  const ratingRows = ratings.results.map(r => ({
+    ...r, source: "rating", review: "approved", submitted_at: r.updated_at,
+  }));
+  const rejectedRows = rejected.results.map(s => ({ ...s, source: "submission" }));
+  const reviewed = [...ratingRows, ...rejectedRows];
+
+  const pendingTagged = pending.results.map(s => ({ ...s, source: "submission" }));
+  const pendingWithCurrent = await attachCurrentApproved(env, pendingTagged);
+  return htmlResponse(renderAdminHTML(pendingWithCurrent, reviewed, tab));
 }
 
-// For each pending submission, look up the most recent approved row
-// for the same domain so the diff view can show what would change.
-// Chunked because D1 caps a single query at 100 bound parameters.
+// For each pending submission, look up the canonical approved entry for
+// the same domain so the diff view can show what would change. Chunked
+// because D1 caps a single query at 100 bound parameters.
 async function attachCurrentApproved(env, pendingRows) {
   if (!pendingRows.length) return pendingRows.map(s => ({ ...s, current: null }));
 
@@ -496,13 +512,7 @@ async function attachCurrentApproved(env, pendingRows) {
     const slice = domains.slice(i, i + CHUNK);
     const placeholders = slice.map(() => "?").join(",");
     const { results } = await env.DB.prepare(
-      `SELECT s.* FROM submissions s
-       JOIN (
-         SELECT domain, MAX(id) AS max_id
-         FROM submissions
-         WHERE review = 'approved' AND domain IN (${placeholders})
-         GROUP BY domain
-       ) latest ON s.id = latest.max_id`
+      `SELECT * FROM ratings WHERE domain IN (${placeholders})`
     ).bind(...slice).all();
     for (const r of results) byDomain.set(r.domain, r);
   }
@@ -510,6 +520,44 @@ async function attachCurrentApproved(env, pendingRows) {
   return pendingRows.map(s => ({ ...s, current: byDomain.get(s.domain) || null }));
 }
 
+// Field-merging helper shared by approve and edit-rating flows: takes a
+// row (submission or rating) and a JSON body of overrides, produces the
+// final field values that should land in `ratings`.
+function mergeRatingFields(row, body) {
+  const asInt01 = v => (v ? 1 : 0);
+  const pick = (key, fallback, transform = v => v) =>
+    body[key] !== undefined ? transform(body[key]) : fallback;
+
+  const finalStatus = pick("status", row.status);
+  const finalOs = pick("openSource", row.open_source, asInt01);
+  const finalLogin = pick("login", row.login, asInt01);
+  const finalAbandoned = pick("abandoned", row.abandoned, asInt01);
+  const finalSubscription = pick("subscription", row.subscription, asInt01);
+  const finalRec = pick("recommended", row.recommended, asInt01);
+
+  let finalCats = rowCategories(row);
+  if (body.categories !== undefined || body.category !== undefined) {
+    const parsed = parseCategories(body);
+    if (parsed) finalCats = parsed;
+  }
+  const finalCat = finalCats[0] ?? 0;
+
+  let finalName = row.name;
+  if (body.name !== undefined) {
+    const cleaned = sanitizeText(body.name, 80);
+    finalName = cleaned.length ? cleaned : null;
+  }
+
+  return {
+    status: finalStatus, category: finalCat, categories: JSON.stringify(finalCats),
+    open_source: finalOs, login: finalLogin, abandoned: finalAbandoned,
+    subscription: finalSubscription, recommended: finalRec, name: finalName,
+  };
+}
+
+// Approve a submission: upsert its (possibly edited) fields into the
+// `ratings` table and delete the submission row. UNIQUE(domain) on
+// ratings means a re-approval cleanly overwrites the previous entry.
 async function handleApprove(path, request, env) {
   const id = path.split("/").pop();
 
@@ -519,46 +567,64 @@ async function handleApprove(path, request, env) {
   const sub = await env.DB.prepare("SELECT * FROM submissions WHERE id = ?").bind(id).first();
   if (!sub) return notFound();
 
-  // Pick each field from the request body, falling back to whatever
-  // was stored on the submission row.
-  const asInt01 = v => (v ? 1 : 0);
-  const pick = (key, fallback, transform = v => v) =>
-    body[key] !== undefined ? transform(body[key]) : fallback;
+  const f = mergeRatingFields(sub, body);
 
-  const finalStatus = pick("status", sub.status);
-  const finalOs = pick("openSource", sub.open_source, asInt01);
-  const finalLogin = pick("login", sub.login, asInt01);
-  const finalAbandoned = pick("abandoned", sub.abandoned, asInt01);
-  const finalSubscription = pick("subscription", sub.subscription, asInt01);
-  const finalRec = pick("recommended", sub.recommended, asInt01);
+  await env.DB.batch([
+    env.DB.prepare(
+      `INSERT INTO ratings (domain, status, category, categories, open_source,
+                            login, abandoned, subscription, recommended, name, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+       ON CONFLICT(domain) DO UPDATE SET
+         status = excluded.status,
+         category = excluded.category,
+         categories = excluded.categories,
+         open_source = excluded.open_source,
+         login = excluded.login,
+         abandoned = excluded.abandoned,
+         subscription = excluded.subscription,
+         recommended = excluded.recommended,
+         name = excluded.name,
+         updated_at = datetime('now')`
+    ).bind(
+      sub.domain, f.status, f.category, f.categories, f.open_source,
+      f.login, f.abandoned, f.subscription, f.recommended, f.name
+    ),
+    env.DB.prepare("DELETE FROM submissions WHERE id = ?").bind(id),
+  ]);
 
-  // Categories: accept new `categories` array OR legacy `category` int,
-  // falling back to whatever's on the row.
-  let finalCats = rowCategories(sub);
-  if (body.categories !== undefined || body.category !== undefined) {
-    const parsed = parseCategories(body);
-    if (parsed) finalCats = parsed;
-  }
-  const finalCat = finalCats[0] ?? 0;  // legacy column
+  return jsonResponse({ success: true });
+}
 
-  // Curation name: "" or whitespace-only clears the field; otherwise
-  // clean and cap at 80 chars.
-  let finalName = sub.name;
-  if (body.name !== undefined) {
-    const cleaned = sanitizeText(body.name, 80);
-    finalName = cleaned.length ? cleaned : null;
-  }
+// Edit an already-approved entry directly in the `ratings` table. No
+// submission row is involved; the diff view doesn't apply here.
+async function handleEditRating(path, request, env) {
+  const id = path.split("/").pop();
+
+  let body = {};
+  try { body = await request.json(); } catch {}
+
+  const row = await env.DB.prepare("SELECT * FROM ratings WHERE id = ?").bind(id).first();
+  if (!row) return notFound();
+
+  const f = mergeRatingFields(row, body);
 
   await env.DB.prepare(
-    `UPDATE submissions
-       SET review = ?, status = ?, category = ?, categories = ?, open_source = ?,
-           login = ?, abandoned = ?, subscription = ?, recommended = ?, name = ?
+    `UPDATE ratings
+       SET status = ?, category = ?, categories = ?, open_source = ?,
+           login = ?, abandoned = ?, subscription = ?, recommended = ?, name = ?,
+           updated_at = datetime('now')
      WHERE id = ?`
   ).bind(
-    REVIEW.APPROVED, finalStatus, finalCat, JSON.stringify(finalCats), finalOs,
-    finalLogin, finalAbandoned, finalSubscription, finalRec, finalName, id
+    f.status, f.category, f.categories, f.open_source,
+    f.login, f.abandoned, f.subscription, f.recommended, f.name, id
   ).run();
 
+  return jsonResponse({ success: true });
+}
+
+async function handleDeleteRating(path, env) {
+  const id = path.split("/").pop();
+  await env.DB.prepare("DELETE FROM ratings WHERE id = ?").bind(id).run();
   return jsonResponse({ success: true });
 }
 
@@ -764,10 +830,12 @@ function toastAndReload(msg) {
 
 const editDialog = document.getElementById('edit-dialog');
 let editingId = null;
+let editingSource = null; // 'submission' (approve flow) or 'rating' (direct edit)
 let editingAction = null; // 'approve' or 'update'
 
 function openEdit(btn, title) {
   editingId = btn.dataset.id;
+  editingSource = btn.dataset.source || 'submission';
   editingAction = title.startsWith('Approve') ? 'approve' : 'update';
   document.getElementById('edit-title').textContent = title;
   const domainCell = btn.closest('tr').querySelector('td');
@@ -803,7 +871,10 @@ document.getElementById('edit-form').addEventListener('submit', async (e) => {
     name: document.getElementById('edit-name').value.trim(),
     recommended: document.getElementById('edit-rec').checked,
   };
-  await fetch('/admin/approve/' + editingId, {
+  const url = editingSource === 'rating'
+    ? '/admin/ratings/' + editingId
+    : '/admin/approve/' + editingId;
+  await fetch(url, {
     method: 'POST', headers: {'Content-Type':'application/json'},
     body: JSON.stringify(body),
   });
@@ -944,8 +1015,13 @@ function renderRow(sub, showActions) {
   // Every field the edit dialog needs, stuffed on the button so the JS
   // can read them without another network call. data-categories is a
   // JSON string so the dialog can parse and tick the right checkboxes.
+  // `source` tells the admin JS whether the row is a submission (edit
+  // goes through /admin/approve/:id) or a canonical rating (edit goes
+  // through /admin/ratings/:id).
+  const source = sub.source || "submission";
   const editAttrs = [
     `data-id="${sub.id}"`,
+    `data-source="${source}"`,
     `data-status="${sub.status}"`,
     `data-categories="${escHtml(JSON.stringify(cats))}"`,
     `data-os="${sub.open_source ? 1 : 0}"`,
@@ -964,7 +1040,7 @@ function renderRow(sub, showActions) {
       </td>`
     : `<td style="white-space:nowrap">
         <span class="review-badge review-badge--${sub.review}">${sub.review}</span>
-        ${sub.review === REVIEW.APPROVED
+        ${source === "rating"
           ? `<button class="btn btn--edit" ${editAttrs} onclick="openEdit(this, 'Edit entry')">Edit</button>`
           : ""}
       </td>`;
@@ -1176,6 +1252,8 @@ export default {
       if (path === "/admin" && request.method === "GET") return handleAdminPage(url, env);
       if (path === "/admin/export" && request.method === "GET") return handleAdminExport(env);
       if (path.startsWith("/admin/approve/") && request.method === "POST") return handleApprove(path, request, env);
+      if (path.startsWith("/admin/ratings/") && request.method === "POST") return handleEditRating(path, request, env);
+      if (path.startsWith("/admin/ratings/") && request.method === "DELETE") return handleDeleteRating(path, env);
       if (path.startsWith("/admin/reject/") && request.method === "POST") return handleReject(path, env);
     }
 
