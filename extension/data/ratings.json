@@ -218,6 +218,7 @@
   { "d": "tunnelbear.com", "s": 3, "os": false, "cat": 13, "n": "TunnelBear", "sb": true },
   { "d": "hide.me", "s": 3, "os": false, "cat": 13, "n": "Hide.me", "sb": true },
   { "d": "tailscale.com", "s": 2, "os": true, "cat": 13, "lg": true, "sb": true },
+  { "d": "f-secure.com", "s": 3, "os": false, "cat": [13,36], "n": "F-Secure", "lg": true },
 
   { "d": "mozilla.org", "s": 1, "os": true, "cat": 14, "n": "Firefox" },
   { "d": "brave.com", "s": 1, "os": false, "cat": 14, "n": "Brave" },
@@ -392,6 +393,16 @@
   { "d": "wallabag.org", "s": 1, "os": true, "cat": 35, "n": "Wallabag" },
   { "d": "readwise.io", "s": 3, "os": false, "cat": 35, "n": "Readwise Reader", "lg": true, "sb": true },
   { "d": "omnivore.app", "s": 1, "os": true, "cat": 35, "n": "Omnivore", "ab": true },
+
+  { "d": "bitdefender.com", "s": 2, "os": false, "cat": 36, "n": "Bitdefender", "lg": true, "sb": true },
+  { "d": "kaspersky.com", "s": 2, "os": false, "cat": 36, "n": "Kaspersky", "lg": true, "sb": true },
+  { "d": "eset.com", "s": 3, "os": false, "cat": 36, "n": "ESET", "lg": true, "sb": true },
+  { "d": "malwarebytes.com", "s": 2, "os": false, "cat": 36, "n": "Malwarebytes", "lg": true, "sb": true },
+  { "d": "avast.com", "s": 2, "os": false, "cat": 36, "n": "Avast", "lg": true, "sb": true },
+  { "d": "avg.com", "s": 2, "os": false, "cat": 36, "n": "AVG", "lg": true, "sb": true },
+  { "d": "norton.com", "s": 3, "os": false, "cat": 36, "n": "Norton", "lg": true, "sb": true },
+  { "d": "mcafee.com", "s": 3, "os": false, "cat": 36, "n": "McAfee", "lg": true, "sb": true },
+  { "d": "clamav.net", "s": 1, "os": true, "cat": 36, "n": "ClamAV" },
 
   { "d": "amazon.com", "s": 0 },
   { "d": "amazon.co.uk", "s": 0 },
