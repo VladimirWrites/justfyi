@@ -474,17 +474,19 @@ async function handleAdminPage(url, env) {
   // Pending lives in `submissions`; approved rows live in their own
   // `ratings` table. Rejected submissions still come from `submissions`
   // and are merged into the reviewed view alongside ratings.
-  const [pending, ratings, rejected] = await Promise.all([
+  const [pending, ratings, rejected, subscribers] = await Promise.all([
     env.DB.prepare(
       "SELECT * FROM submissions WHERE review = ? ORDER BY submitted_at DESC"
     ).bind(REVIEW.PENDING).all(),
-    // Full catalog — admin needs to see all of it. Sorted for stable browsing.
     env.DB.prepare(
       "SELECT * FROM ratings ORDER BY category ASC, domain ASC"
     ).all(),
     env.DB.prepare(
       "SELECT * FROM submissions WHERE review = ? ORDER BY submitted_at DESC"
     ).bind(REVIEW.REJECTED).all(),
+    env.DB.prepare(
+      "SELECT * FROM subscribers ORDER BY subscribed_at DESC"
+    ).all(),
   ]);
 
   // Tag every row with the table it came from so the renderer can pick
@@ -497,7 +499,9 @@ async function handleAdminPage(url, env) {
 
   const pendingTagged = pending.results.map(s => ({ ...s, source: "submission" }));
   const pendingWithCurrent = await attachCurrentApproved(env, pendingTagged);
-  return htmlResponse(renderAdminHTML(pendingWithCurrent, reviewed, tab));
+  return htmlResponse(renderAdminHTML(
+    pendingWithCurrent, reviewed, subscribers.results, tab
+  ));
 }
 
 // For each pending submission, look up the canonical approved entry for
@@ -636,6 +640,12 @@ async function handleReject(path, env) {
   return jsonResponse({ success: true });
 }
 
+async function handleDeleteSubscriber(path, env) {
+  const id = path.split("/").pop();
+  await env.DB.prepare("DELETE FROM subscribers WHERE id = ?").bind(id).run();
+  return jsonResponse({ success: true });
+}
+
 
 // ───────────────────────────────────────────────────────────
 // HTML templates
@@ -764,6 +774,9 @@ const ADMIN_CSS = `
   .filters input:focus, .filters select:focus { outline: none; border-color: #006C49; box-shadow: 0 0 0 2px rgba(0,108,73,0.15); }
   .filters .f-clear { padding: 6px 14px; border: 1px solid #CAC4D0; background: #fff; border-radius: 100px; cursor: pointer; font: inherit; font-size: 12px; color: #49454F; }
   .filters .f-count { margin-left: auto; font-size: 12px; color: #666; }
+
+  /* Header above the subscriptions / subscribers table */
+  .overview-h2 { font-size: 14px; font-weight: 700; color: #49454F; margin-bottom: 12px; letter-spacing: -0.01em; }
 
   #toast { position: fixed; bottom: 24px; right: 24px; background: #1C1B1F; color: #fff; padding: 10px 20px; border-radius: 8px; font-size: 13px; display: none; z-index: 100; }
 
@@ -894,6 +907,11 @@ async function reject(id) {
   await fetch('/admin/reject/' + id, { method: 'POST' });
   toastAndReload('Rejected');
 }
+async function deleteSubscriber(id, email) {
+  if (!confirm('Delete subscriber ' + email + '?')) return;
+  await fetch('/admin/subscribers/' + id, { method: 'DELETE' });
+  toastAndReload('Subscriber deleted');
+}
 
 function initFilters(scope) {
   const bar = document.querySelector('.filters[data-scope="' + scope + '"]');
@@ -977,6 +995,16 @@ initFilters('reviewed');
 
 function renderStatusBadge(s) {
   return `<span class="status-badge" style="background:${STATUS_COLORS[s] || "#666"}">${escHtml(STATUS_LABELS[s] || s)}</span>`;
+}
+
+function renderSubscriberRow(s) {
+  return `<tr>
+    <td>${escHtml(s.email)}</td>
+    <td style="font-size:12px;color:#666">${escHtml(s.subscribed_at)}</td>
+    <td style="white-space:nowrap">
+      <button class="btn btn--reject" onclick="deleteSubscriber(${s.id}, '${escHtml(s.email).replace(/'/g, "\\'")}')">Delete</button>
+    </td>
+  </tr>`;
 }
 
 // Subrow under each pending submission showing the currently-shipped
@@ -1130,7 +1158,7 @@ function renderFilterBar(scope) {
   </div>`;
 }
 
-function renderAdminHTML(pending, reviewed, activeTab) {
+function renderAdminHTML(pending, reviewed, subscribers, activeTab) {
   const pendingTab = `
     ${pending.length === 0
       ? '<div class="empty">No pending submissions.</div>'
@@ -1147,6 +1175,15 @@ function renderAdminHTML(pending, reviewed, activeTab) {
         <table>
           <thead><tr><th>Domain</th><th>Status</th><th>Category</th><th>OS</th><th>Note</th><th>Submitted</th><th>Status</th></tr></thead>
           <tbody>${reviewed.map(s => renderRow(s, false)).join("")}</tbody>
+        </table>`}`;
+
+  const subscribersTab = `
+    <h2 class="overview-h2">${subscribers.length} newsletter ${subscribers.length === 1 ? "subscriber" : "subscribers"}</h2>
+    ${subscribers.length === 0
+      ? '<div class="empty">No subscribers yet.</div>'
+      : `<table>
+          <thead><tr><th>Email</th><th>Subscribed</th><th>Actions</th></tr></thead>
+          <tbody>${subscribers.map(renderSubscriberRow).join("")}</tbody>
         </table>`}`;
 
   return `<!DOCTYPE html>
@@ -1171,8 +1208,13 @@ function renderAdminHTML(pending, reviewed, activeTab) {
 <div class="tabs">
   <a class="tab ${activeTab === REVIEW.PENDING ? 'active' : ''}" href="/admin?tab=pending">Pending (${pending.length})</a>
   <a class="tab ${activeTab === 'reviewed' ? 'active' : ''}" href="/admin?tab=reviewed">Reviewed</a>
+  <a class="tab ${activeTab === 'subscribers' ? 'active' : ''}" href="/admin?tab=subscribers">Subscribers (${subscribers.length})</a>
 </div>
-<div class="content">${activeTab === REVIEW.PENDING ? pendingTab : reviewedTab}</div>
+<div class="content">${
+  activeTab === 'reviewed' ? reviewedTab :
+  activeTab === 'subscribers' ? subscribersTab :
+  pendingTab
+}</div>
 
 <div id="toast"></div>
 
@@ -1255,6 +1297,7 @@ export default {
       if (path.startsWith("/admin/approve/") && request.method === "POST") return handleApprove(path, request, env);
       if (path.startsWith("/admin/ratings/") && request.method === "POST") return handleEditRating(path, request, env);
       if (path.startsWith("/admin/ratings/") && request.method === "DELETE") return handleDeleteRating(path, env);
+      if (path.startsWith("/admin/subscribers/") && request.method === "DELETE") return handleDeleteSubscriber(path, env);
       if (path.startsWith("/admin/reject/") && request.method === "POST") return handleReject(path, env);
     }
 
