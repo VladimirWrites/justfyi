@@ -6,8 +6,10 @@
 const API_BASE = "https://api.justfyi.app";
 
 // ─── URL Normalization (keep in sync with worker/src/index.js) ───
-// Two-part public suffixes — everything before the eTLD+1 is stripped.
-// Expand as needed; anything not listed falls back to last-two-parts.
+// We preserve the full hostname (subdomains included) and only strip
+// a leading `www.`. Lookup then walks up from the full host to eTLD+1,
+// using MULTI_PART_SUFFIXES to know when to stop so `foo.co.uk` doesn't
+// collapse to `co.uk`.
 const MULTI_PART_SUFFIXES = new Set([
   "co.uk", "org.uk", "ac.uk", "gov.uk", "me.uk", "net.uk",
   "co.jp", "ne.jp", "or.jp", "ac.jp",
@@ -19,15 +21,11 @@ const MULTI_PART_SUFFIXES = new Set([
 ]);
 
 function normalizeUrl(url) {
-  let host = url.trim().toLowerCase();
-  host = host.replace(/^https?:\/\//, "");
+  let host = url.trim().toLowerCase().replace(/^https?:\/\//, "");
   const endIdx = host.search(/[/?#:]/);
   if (endIdx !== -1) host = host.substring(0, endIdx);
-
-  const parts = host.split(".");
-  if (parts.length <= 2) return host;
-  const last2 = parts.slice(-2).join(".");
-  return MULTI_PART_SUFFIXES.has(last2) ? parts.slice(-3).join(".") : last2;
+  if (host.startsWith("www.")) host = host.substring(4);
+  return host;
 }
 
 // ─── Icon + badge config ───
@@ -133,9 +131,21 @@ async function updateBadgeForUrl(url, tabId) {
 }
 
 // ─── Local lookup by domain ───
-async function lookupRating(domain) {
+// Walks from the full hostname up to eTLD+1. `sub.foo.com` tries
+// `sub.foo.com` then `foo.com`; `a.b.foo.co.uk` tries the full host,
+// then `b.foo.co.uk`, then `foo.co.uk`, then stops (never `co.uk`).
+async function lookupRating(host) {
   const { ratingsMap = {} } = await chrome.storage.local.get("ratingsMap");
-  return ratingsMap[domain] || null;
+  let parts = host.split(".");
+  while (parts.length >= 2) {
+    const hit = ratingsMap[parts.join(".")];
+    if (hit) return hit;
+    if (parts.length === 2) break;
+    const last2 = parts.slice(-2).join(".");
+    if (parts.length === 3 && MULTI_PART_SUFFIXES.has(last2)) break;
+    parts = parts.slice(1);
+  }
+  return null;
 }
 
 // ─── API POST helpers (called from popup) ───
@@ -159,8 +169,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === "getRating") {
     (async () => {
       const domain = normalizeUrl(message.url);
-      const { ratingsMap = {}, ratings = [] } = await chrome.storage.local.get(["ratingsMap", "ratings"]);
-      sendResponse({ rating: ratingsMap[domain] || null, domain, allRatings: ratings });
+      const rating = await lookupRating(domain);
+      const { ratings = [] } = await chrome.storage.local.get("ratings");
+      sendResponse({ rating, domain, allRatings: ratings });
     })();
     return true;
   }

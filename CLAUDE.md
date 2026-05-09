@@ -15,6 +15,7 @@ Browser extension (justfyi.app) that tells users whether an online tool is actua
 - No login UI in extension -- no auth at all
 - No runtime ratings sync — the bundled file IS the ratings database. New ratings ship with extension releases
 - URL normalization logic is duplicated in extension/background.js and worker/src/index.js -- keep in sync
+- Lookup matches the full hostname (minus `www.`); unmatched subdomains fall back to the parent host up to eTLD+1, so `drive.google.com` inherits `google.com`'s rating unless it has its own entry
 - No inline scripts in extension HTML (MV3 CSP)
 - All code bundled in extension, no remote script loading
 - Vanilla JS only in extension, no frameworks

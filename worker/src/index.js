@@ -149,27 +149,19 @@ function parseEmail(v) {
 // ───────────────────────────────────────────────────────────
 // URL normalization
 // (duplicated in extension/background.js — keep in sync)
+//
+// Preserves the full hostname (subdomains included); only strips
+// protocol, path/query/fragment/port, and a leading `www.`. The
+// subdomain-fallback lookup lives in the extension, since the worker
+// only needs the canonical host string for storage and review.
 // ───────────────────────────────────────────────────────────
-
-const MULTI_PART_SUFFIXES = new Set([
-  "co.uk", "org.uk", "ac.uk", "gov.uk", "me.uk", "net.uk",
-  "co.jp", "ne.jp", "or.jp", "ac.jp",
-  "co.kr", "co.in", "co.id", "co.il", "co.nz", "co.za", "co.th",
-  "com.au", "net.au", "org.au", "edu.au", "gov.au",
-  "com.ar", "com.be", "com.br", "com.cn", "com.co", "com.hk", "com.mx",
-  "com.my", "com.pe", "com.ph", "com.pk", "com.sg", "com.tr", "com.tw",
-  "com.uy", "com.ve",
-]);
 
 function normalizeUrl(url) {
   let host = url.trim().toLowerCase().replace(/^https?:\/\//, "");
   const endIdx = host.search(/[/?#:]/);
   if (endIdx !== -1) host = host.substring(0, endIdx);
-
-  const parts = host.split(".");
-  if (parts.length <= 2) return host;
-  const last2 = parts.slice(-2).join(".");
-  return MULTI_PART_SUFFIXES.has(last2) ? parts.slice(-3).join(".") : last2;
+  if (host.startsWith("www.")) host = host.substring(4);
+  return host;
 }
 
 
@@ -1107,7 +1099,7 @@ function renderRow(sub, showActions) {
     <td>${renderStatusBadge(sub.status)}</td>
     <td>${catsLabel}</td>
     <td>${os}</td>
-    <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${sub.note ? escHtml(sub.note) : "-"}</td>
+    <td style="max-width:280px;white-space:normal;word-break:break-word">${sub.note ? escHtml(sub.note) : "-"}</td>
     <td style="font-size:12px;color:#666">${escHtml(sub.submitted_at)}</td>
     ${actions}
   </tr>`;
